@@ -1435,34 +1435,6 @@ def main():
     with tab5:
         pseudocode_section()
         
-        st.markdown("---")
-        st.markdown("### 📋 TUGAS COMPLETION CHECKLIST")
-        col_check1, col_check2 = st.columns(2)
-        with col_check1:
-            st.markdown("✅ **Tugas 1 - Kuis Interaktif**")
-            st.markdown("   - 10 pertanyaan fan identity")
-            st.markdown("   - Scoring Directioner vs Swiftie")
-            st.markdown("   - Hasil akhir dengan animasi")
-            st.markdown("")
-            st.markdown("✅ **Tugas 2 - Dasar Python**")
-            st.markdown("   - Integer, Float, String, Boolean")
-            st.markdown("   - Array/List operations")
-            st.markdown("   - Dictionary profiling")
-            st.markdown("   - Typecasting demonstrations")
-        with col_check2:
-            st.markdown("✅ **Tugas 3 - OOP**")
-            st.markdown("   - Class Artist dengan atribut")
-            st.markdown("   - Method info(), top_song_info()")
-            st.markdown("   - Inheritance (SoloArtist, BandArtist)")
-            st.markdown("   - Property decorators")
-            st.markdown("")
-            st.markdown("✅ **Tugas 4 - Grafik**")
-            st.markdown("   - Bar chart (popularitas lagu)")
-            st.markdown("   - Pie chart (preferensi fans)")
-            st.markdown("   - Line chart (album per tahun)")
-            st.markdown("   - Scatter plot & multi charts")
-        
-
 if __name__ == "__main__":
     if "fan_distribution" not in st.session_state:
         st.session_state["fan_distribution"] = {"Directioner": 62, "Swiftie": 38}
