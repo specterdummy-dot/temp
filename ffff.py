@@ -17,90 +17,166 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.markdown("""
-<style>
-    .stApp {
-        background: linear-gradient(135deg, #0b1120 0%, #19233c 25%, #1e2a4a 50%, #19233c 75%, #0b1120 100%);
-    }
-    .stButton > button {
-        background: linear-gradient(90deg, #ff416c, #ff4b2b);
-        color: white;
-        border-radius: 30px;
-        padding: 0.5rem 2rem;
-        font-weight: bold;
-        border: none;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        transition: transform 0.2s;
-    }
-    .stButton > button:hover {
-        transform: scale(1.02);
-        background: linear-gradient(90deg, #ff4b2b, #ff416c);
-    }
-    .stSelectbox, .stSlider, .stTextInput {
-        background-color: rgba(255,255,255,0.05);
-        border-radius: 12px;
-    }
-    h1, h2, h3 {
-        color: #f5f5f7;
-        font-weight: 700;
-        letter-spacing: -0.5px;
-    }
-    .css-1kyxreq {
-        background: #0f172a;
-    }
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 24px;
-        background: rgba(15,23,42,0.6);
-        border-radius: 30px;
-        padding: 8px 16px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 30px;
-        padding: 8px 24px;
-        font-weight: 600;
-        color: #cbd5e1;
-    }
-    .stTabs [aria-selected="true"] {
-        background: linear-gradient(120deg, #3b82f6, #8b5cf6);
-        color: white;
-    }
-    .metric-card {
-        background: rgba(30,41,59,0.7);
-        backdrop-filter: blur(10px);
-        border-radius: 24px;
-        padding: 20px;
-        border: 1px solid rgba(255,255,255,0.1);
-    }
-    hr {
-        margin: 1rem 0;
-        border-color: #334155;
-    }
-    .custom-success {
-        background: linear-gradient(135deg, #10b981, #059669);
-        border-radius: 20px;
-        padding: 20px;
-        text-align: center;
-        animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-        0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.4); }
-        70% { box-shadow: 0 0 0 20px rgba(16,185,129,0); }
-        100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
-    }
-    .glass-card {
-        background: rgba(255,255,255,0.05);
-        backdrop-filter: blur(12px);
-        border-radius: 32px;
-        padding: 24px;
-        border: 1px solid rgba(255,255,255,0.15);
-        transition: all 0.3s ease;
-    }
-    .glass-card:hover {
-        transform: translateY(-5px);
-        background: rgba(255,255,255,0.08);
-    }
-</style>
-""", unsafe_allow_html=True)
+# ==================== THEME SETTINGS ====================
+def init_theme_state():
+    if "theme_mode" not in st.session_state:
+        st.session_state.theme_mode = "dark"
+    if "primary_color" not in st.session_state:
+        st.session_state.primary_color = "gradient"
+    if "accent_color" not in st.session_state:
+        st.session_state.accent_color = "purple"
+
+init_theme_state()
+
+def get_theme_css():
+    if st.session_state.theme_mode == "dark":
+        base_bg = "linear-gradient(135deg, #0b1120 0%, #19233c 25%, #1e2a4a 50%, #19233c 75%, #0b1120 100%)"
+        card_bg = "rgba(30,41,59,0.7)"
+        text_color = "#f5f5f7"
+        text_secondary = "#cbd5e1"
+        sidebar_bg = "#0f172a"
+        border_color = "#334155"
+        code_bg = "#1e293b"
+    else:
+        base_bg = "linear-gradient(135deg, #fef3c7 0%, #fde68a 25%, #fcd34d 50%, #fde68a 75%, #fef3c7 100%)"
+        card_bg = "rgba(255,255,255,0.85)"
+        text_color = "#1f2937"
+        text_secondary = "#374151"
+        sidebar_bg = "rgba(255,255,255,0.95)"
+        border_color = "#d1d5db"
+        code_bg = "#f3f4f6"
+    
+    if st.session_state.primary_color == "gradient":
+        button_bg = "linear-gradient(90deg, #ff416c, #ff4b2b)"
+        button_hover = "linear-gradient(90deg, #ff4b2b, #ff416c)"
+        tab_active = "linear-gradient(120deg, #3b82f6, #8b5cf6)"
+    elif st.session_state.primary_color == "blue":
+        button_bg = "linear-gradient(90deg, #1e3c72, #2a5298)"
+        button_hover = "linear-gradient(90deg, #2a5298, #1e3c72)"
+        tab_active = "linear-gradient(120deg, #1e3c72, #2a5298)"
+    elif st.session_state.primary_color == "green":
+        button_bg = "linear-gradient(90deg, #11998e, #38ef7d)"
+        button_hover = "linear-gradient(90deg, #38ef7d, #11998e)"
+        tab_active = "linear-gradient(120deg, #11998e, #38ef7d)"
+    else:
+        button_bg = "linear-gradient(90deg, #ff416c, #ff4b2b)"
+        button_hover = "linear-gradient(90deg, #ff4b2b, #ff416c)"
+        tab_active = "linear-gradient(120deg, #ff416c, #ff4b2b)"
+    
+    if st.session_state.accent_color == "purple":
+        chart_color_1 = "#ff7e5e"
+        chart_color_2 = "#6a5acd"
+        chart_color_3 = "#8b5cf6"
+    elif st.session_state.accent_color == "blue":
+        chart_color_1 = "#3b82f6"
+        chart_color_2 = "#1e3c72"
+        chart_color_3 = "#60a5fa"
+    elif st.session_state.accent_color == "green":
+        chart_color_1 = "#10b981"
+        chart_color_2 = "#059669"
+        chart_color_3 = "#34d399"
+    else:
+        chart_color_1 = "#ff7e5e"
+        chart_color_2 = "#6a5acd"
+        chart_color_3 = "#8b5cf6"
+    
+    return f"""
+    <style>
+        .stApp {{
+            background: {base_bg} !important;
+        }}
+        h1, h2, h3, h4, h5, h6, .stMarkdown, label, .stSelectbox label, .stSlider label {{
+            color: {text_color} !important;
+        }}
+        .stMarkdown p, .stMarkdown li, .stMarkdown span, .stText, .stCaption {{
+            color: {text_secondary} !important;
+        }}
+        .stButton > button {{
+            background: {button_bg} !important;
+            color: white !important;
+            border-radius: 30px !important;
+            padding: 0.5rem 2rem !important;
+            font-weight: bold !important;
+            border: none !important;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important;
+            transition: transform 0.2s !important;
+        }}
+        .stButton > button:hover {{
+            transform: scale(1.02) !important;
+            background: {button_hover} !important;
+        }}
+        .stSelectbox, .stSlider, .stTextInput {{
+            background-color: rgba(255,255,255,0.05) !important;
+            border-radius: 12px !important;
+        }}
+        .stTabs [data-baseweb="tab-list"] {{
+            gap: 24px !important;
+            background: rgba(15,23,42,0.6) !important;
+            border-radius: 30px !important;
+            padding: 8px 16px !important;
+        }}
+        .stTabs [data-baseweb="tab"] {{
+            border-radius: 30px !important;
+            padding: 8px 24px !important;
+            font-weight: 600 !important;
+            color: {text_secondary} !important;
+        }}
+        .stTabs [aria-selected="true"] {{
+            background: {tab_active} !important;
+            color: white !important;
+        }}
+        .metric-card {{
+            background: {card_bg} !important;
+            backdrop-filter: blur(10px) !important;
+            border-radius: 24px !important;
+            padding: 20px !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+        }}
+        hr {{
+            margin: 1rem 0 !important;
+            border-color: {border_color} !important;
+        }}
+        .stSidebar {{
+            background: {sidebar_bg} !important;
+        }}
+        code, .stCodeBlock {{
+            background-color: {code_bg} !important;
+            color: {text_color} !important;
+        }}
+        .custom-success {{
+            background: linear-gradient(135deg, #10b981, #059669) !important;
+            border-radius: 20px !important;
+            padding: 20px !important;
+            text-align: center !important;
+            animation: pulse 2s infinite !important;
+        }}
+        @keyframes pulse {{
+            0% {{ box-shadow: 0 0 0 0 rgba(16,185,129,0.4); }}
+            70% {{ box-shadow: 0 0 0 20px rgba(16,185,129,0); }}
+            100% {{ box-shadow: 0 0 0 0 rgba(16,185,129,0); }}
+        }}
+        .glass-card {{
+            background: {card_bg} !important;
+            backdrop-filter: blur(12px) !important;
+            border-radius: 32px !important;
+            padding: 24px !important;
+            border: 1px solid rgba(255,255,255,0.15) !important;
+            transition: all 0.3s ease !important;
+        }}
+        .glass-card:hover {{
+            transform: translateY(-5px) !important;
+            background: rgba(255,255,255,0.08) !important;
+        }}
+        .theme-selector {{
+            background: {card_bg} !important;
+            border-radius: 16px !important;
+            padding: 12px !important;
+            margin-bottom: 16px !important;
+        }}
+    </style>
+    """
+
+st.markdown(get_theme_css(), unsafe_allow_html=True)
 
 ONE_DIRECTION_DATA = {
     "name": "One Direction",
@@ -790,7 +866,7 @@ def render_song_objects_demo(songs_db):
             "Rating": song.rating_category()
         })
     df_songs = pd.DataFrame(songs_data)
-    st.dataframe(df_songs, use_container_width=True)
+    st.dataframe(df_songs, width='stretch')
 
 
 def pseudocode_section():
@@ -983,6 +1059,10 @@ END CLASS
                        (title, layout, sidebar state)
                                        |
                                        v
+                         INITIALIZE THEME STATE
+                    (dark/light, primary color, accent)
+                                       |
+                                       v
                             APPLY CUSTOM CSS STYLES
                        (gradients, animations, cards)
                                        |
@@ -1004,7 +1084,7 @@ END CLASS
                                        |
                                        v
                           RENDER SIDEBAR
-                 (metrics, analytics, reset button)
+                 (metrics, analytics, theme selector, reset)
                                        |
                                        v
                           RENDER MAIN TABS
@@ -1075,6 +1155,45 @@ END CLASS
         """)
 
 
+def theme_selector():
+    st.markdown("### 🎨 CUSTOMIZE THEME")
+    
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        new_theme = st.selectbox(
+            "Theme Mode",
+            options=["dark", "light"],
+            index=0 if st.session_state.theme_mode == "dark" else 1,
+            key="theme_selector_widget"
+        )
+    with col_t2:
+        new_primary = st.selectbox(
+            "Primary Color",
+            options=["gradient", "blue", "green", "red"],
+            index=["gradient", "blue", "green", "red"].index(st.session_state.primary_color),
+            key="primary_selector_widget"
+        )
+    
+    new_accent = st.selectbox(
+        "Accent Color",
+        options=["purple", "blue", "green", "pink"],
+        index=["purple", "blue", "green", "pink"].index(st.session_state.accent_color),
+        key="accent_selector_widget"
+    )
+    
+    if new_theme != st.session_state.theme_mode:
+        st.session_state.theme_mode = new_theme
+        st.rerun()
+    
+    if new_primary != st.session_state.primary_color:
+        st.session_state.primary_color = new_primary
+        st.rerun()
+    
+    if new_accent != st.session_state.accent_color:
+        st.session_state.accent_color = new_accent
+        st.rerun()
+
+
 def sidebar_metrics():
     with st.sidebar:
         st.markdown("## 🎯 ARTIST ANALYTICS")
@@ -1098,15 +1217,9 @@ def sidebar_metrics():
         st.metric("Social Followers (1D)", "120M")
         st.metric("Social Followers (TS)", "250M")
         
+        
         st.markdown("---")
-        st.markdown("### 🐍 PYTHON CONCEPTS")
-        st.caption("✓ Typecasting (str↔int↔float)")
-        st.caption("✓ List & Dictionary Operations")
-        st.caption("✓ OOP (Inheritance, Polymorphism)")
-        st.caption("✓ Matplotlib Visualization")
-        st.caption("✓ Streamlit Interactive UI")
-        st.caption("✓ Class Methods & Properties")
-        st.caption("✓ Static Methods")
+        theme_selector()
         
         st.markdown("---")
         if st.button("🔄 Reset Quiz Session", use_container_width=True):
@@ -1116,8 +1229,7 @@ def sidebar_metrics():
             st.rerun()
         
         st.markdown("---")
-        st.caption("Made with ❤️ for Directioners & Swifties")
-        st.caption("© 2024 Ultimate Fan Identity Test")
+        st.caption("Made by zidan for Directioners & Swifties")
 
 
 taylor_swift = SoloArtist(
@@ -1161,12 +1273,14 @@ def main():
         with st.form(key="quiz_form"):
             for idx, q in enumerate(questions):
                 st.markdown(f"**{idx+1}. {q['question']}**")
+                # FIXED: Added proper label instead of empty string
                 ans = st.radio(
-                    "",
+                    label=f"Question {idx+1}",
                     options=q["options"],
                     key=f"q_{idx}",
                     index=None,
-                    horizontal=False
+                    horizontal=False,
+                    label_visibility="collapsed"
                 )
                 answers.append(ans)
                 st.markdown("---")
@@ -1192,10 +1306,18 @@ def main():
                 st.markdown("### 📈 SCORE BREAKDOWN")
                 col_s1, col_s2 = st.columns(2)
                 with col_s1:
-                    st.progress(d_score / (d_score + s_score) if (d_score + s_score) > 0 else 0.5)
+                    total = d_score + s_score
+                    if total > 0:
+                        st.progress(d_score / total)
+                    else:
+                        st.progress(0.5)
                     st.caption(f"Directioner: {d_score} points")
                 with col_s2:
-                    st.progress(s_score / (d_score + s_score) if (d_score + s_score) > 0 else 0.5)
+                    total = d_score + s_score
+                    if total > 0:
+                        st.progress(s_score / total)
+                    else:
+                        st.progress(0.5)
                     st.caption(f"Swiftie: {s_score} points")
                 
                 st.balloons()
@@ -1340,26 +1462,6 @@ def main():
             st.markdown("   - Line chart (album per tahun)")
             st.markdown("   - Scatter plot & multi charts")
         
-        st.markdown("---")
-        st.markdown("### 🏆 S+ GRADE ACHIEVEMENTS")
-        st.markdown("""
-        - **1000+ Lines of Production Code**
-        - **Full Theme Detection (Light/Dark Mode)**
-        - **Advanced OOP with Inheritance & Properties**
-        - **Multiple Chart Types with Matplotlib**
-        - **Interactive Quiz with Detailed Scoring**
-        - **Session State Management**
-        - **Custom CSS with Animations & Glass Morphism**
-        - **Complete Pseudocode Documentation**
-        - **Song Objects & DataFrames**
-        - **List Comprehension & Lambda Functions**
-        - **Type Casting & Operator Overloading Demo**
-        - **Responsive Layout with 5 Main Tabs**
-        - **Sidebar Analytics & Metrics**
-        - **Reset Functionality**
-        - **Balloon & Success Animations**
-        """)
-
 
 if __name__ == "__main__":
     if "fan_distribution" not in st.session_state:
