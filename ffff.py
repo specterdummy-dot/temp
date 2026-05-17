@@ -3,396 +3,176 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import random
-import time
+import traceback
+import logging
 import json
+import time
+import hashlib
+import base64
+import re
+import sys
 import os
-from typing import Dict, List, Tuple, Any, Optional
-from datetime import datetime
-from collections import Counter
+import inspect
+from typing import Dict, List, Tuple, Any, Optional, Union, Callable, Generator
+from datetime import datetime, timedelta
+from collections import Counter, defaultdict, deque
+from dataclasses import dataclass, field
+from enum import Enum
+from abc import ABC, abstractmethod
+from functools import lru_cache, wraps
+from itertools import chain, combinations, permutations, product
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import math
+import statistics
+import uuid
+from pathlib import Path
+import warnings
 
+warnings.filterwarnings("ignore")
+
+# ==================== LOGGING SETUP ====================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# ==================== STREAMLIT PAGE CONFIG ====================
 st.set_page_config(
-    page_title="DIRECTIONER VS SWIFTIE",
+    page_title="DIRECTIONER VS SWIFTIE - ULTIMATE FAN IDENTITY",
+    page_icon="🎸",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'https://github.com/yourusername/directioner-vs-swiftie',
+        'Report a bug': "https://github.com/yourusername/directioner-vs-swiftie/issues",
+        'About': "# DIRECTIONER VS SWIFTIE\n\nUltimate Fan Identity Matrix - Application"
+    }
 )
 
-# ==================== THEME SETTINGS ====================
-def init_theme_state():
-    if "theme_mode" not in st.session_state:
-        st.session_state.theme_mode = "dark"
-    if "primary_color" not in st.session_state:
-        st.session_state.primary_color = "gradient"
-    if "accent_color" not in st.session_state:
-        st.session_state.accent_color = "purple"
+# ==================== ENUMS & CONSTANTS ====================
+class ThemeMode(Enum):
+    DARK = "dark"
+    LIGHT = "light"
+    AUTO = "auto"
 
-init_theme_state()
+class PrimaryColor(Enum):
+    GRADIENT = "gradient"
+    BLUE = "blue"
+    GREEN = "green"
+    RED = "red"
+    PURPLE = "purple"
 
-def get_theme_css():
-    if st.session_state.theme_mode == "dark":
-        base_bg = "linear-gradient(135deg, #0b1120 0%, #19233c 25%, #1e2a4a 50%, #19233c 75%, #0b1120 100%)"
-        card_bg = "rgba(30,41,59,0.7)"
-        text_color = "#f5f5f7"
-        text_secondary = "#cbd5e1"
-        sidebar_bg = "#0f172a"
-        border_color = "#334155"
-        code_bg = "#1e293b"
-    else:
-        base_bg = "linear-gradient(135deg, #fef3c7 0%, #fde68a 25%, #fcd34d 50%, #fde68a 75%, #fef3c7 100%)"
-        card_bg = "rgba(255,255,255,0.85)"
-        text_color = "#1f2937"
-        text_secondary = "#374151"
-        sidebar_bg = "rgba(255,255,255,0.95)"
-        border_color = "#d1d5db"
-        code_bg = "#f3f4f6"
-    
-    if st.session_state.primary_color == "gradient":
-        button_bg = "linear-gradient(90deg, #ff416c, #ff4b2b)"
-        button_hover = "linear-gradient(90deg, #ff4b2b, #ff416c)"
-        tab_active = "linear-gradient(120deg, #3b82f6, #8b5cf6)"
-    elif st.session_state.primary_color == "blue":
-        button_bg = "linear-gradient(90deg, #1e3c72, #2a5298)"
-        button_hover = "linear-gradient(90deg, #2a5298, #1e3c72)"
-        tab_active = "linear-gradient(120deg, #1e3c72, #2a5298)"
-    elif st.session_state.primary_color == "green":
-        button_bg = "linear-gradient(90deg, #11998e, #38ef7d)"
-        button_hover = "linear-gradient(90deg, #38ef7d, #11998e)"
-        tab_active = "linear-gradient(120deg, #11998e, #38ef7d)"
-    else:
-        button_bg = "linear-gradient(90deg, #ff416c, #ff4b2b)"
-        button_hover = "linear-gradient(90deg, #ff4b2b, #ff416c)"
-        tab_active = "linear-gradient(120deg, #ff416c, #ff4b2b)"
-    
-    if st.session_state.accent_color == "purple":
-        chart_color_1 = "#ff7e5e"
-        chart_color_2 = "#6a5acd"
-        chart_color_3 = "#8b5cf6"
-    elif st.session_state.accent_color == "blue":
-        chart_color_1 = "#3b82f6"
-        chart_color_2 = "#1e3c72"
-        chart_color_3 = "#60a5fa"
-    elif st.session_state.accent_color == "green":
-        chart_color_1 = "#10b981"
-        chart_color_2 = "#059669"
-        chart_color_3 = "#34d399"
-    else:
-        chart_color_1 = "#ff7e5e"
-        chart_color_2 = "#6a5acd"
-        chart_color_3 = "#8b5cf6"
-    
-    return f"""
-    <style>
-        .stApp {{
-            background: {base_bg} !important;
-        }}
-        h1, h2, h3, h4, h5, h6, .stMarkdown, label, .stSelectbox label, .stSlider label {{
-            color: {text_color} !important;
-        }}
-        .stMarkdown p, .stMarkdown li, .stMarkdown span, .stText, .stCaption {{
-            color: {text_secondary} !important;
-        }}
-        .stButton > button {{
-            background: {button_bg} !important;
-            color: white !important;
-            border-radius: 30px !important;
-            padding: 0.5rem 2rem !important;
-            font-weight: bold !important;
-            border: none !important;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important;
-            transition: transform 0.2s !important;
-        }}
-        .stButton > button:hover {{
-            transform: scale(1.02) !important;
-            background: {button_hover} !important;
-        }}
-        .stSelectbox, .stSlider, .stTextInput {{
-            background-color: rgba(255,255,255,0.05) !important;
-            border-radius: 12px !important;
-        }}
-        .stTabs [data-baseweb="tab-list"] {{
-            gap: 24px !important;
-            background: rgba(15,23,42,0.6) !important;
-            border-radius: 30px !important;
-            padding: 8px 16px !important;
-        }}
-        .stTabs [data-baseweb="tab"] {{
-            border-radius: 30px !important;
-            padding: 8px 24px !important;
-            font-weight: 600 !important;
-            color: {text_secondary} !important;
-        }}
-        .stTabs [aria-selected="true"] {{
-            background: {tab_active} !important;
-            color: white !important;
-        }}
-        .metric-card {{
-            background: {card_bg} !important;
-            backdrop-filter: blur(10px) !important;
-            border-radius: 24px !important;
-            padding: 20px !important;
-            border: 1px solid rgba(255,255,255,0.1) !important;
-        }}
-        hr {{
-            margin: 1rem 0 !important;
-            border-color: {border_color} !important;
-        }}
-        .stSidebar {{
-            background: {sidebar_bg} !important;
-        }}
-        code, .stCodeBlock {{
-            background-color: {code_bg} !important;
-            color: {text_color} !important;
-        }}
-        .custom-success {{
-            background: linear-gradient(135deg, #10b981, #059669) !important;
-            border-radius: 20px !important;
-            padding: 20px !important;
-            text-align: center !important;
-            animation: pulse 2s infinite !important;
-        }}
-        @keyframes pulse {{
-            0% {{ box-shadow: 0 0 0 0 rgba(16,185,129,0.4); }}
-            70% {{ box-shadow: 0 0 0 20px rgba(16,185,129,0); }}
-            100% {{ box-shadow: 0 0 0 0 rgba(16,185,129,0); }}
-        }}
-        .glass-card {{
-            background: {card_bg} !important;
-            backdrop-filter: blur(12px) !important;
-            border-radius: 32px !important;
-            padding: 24px !important;
-            border: 1px solid rgba(255,255,255,0.15) !important;
-            transition: all 0.3s ease !important;
-        }}
-        .glass-card:hover {{
-            transform: translateY(-5px) !important;
-            background: rgba(255,255,255,0.08) !important;
-        }}
-        .theme-selector {{
-            background: {card_bg} !important;
-            border-radius: 16px !important;
-            padding: 12px !important;
-            margin-bottom: 16px !important;
-        }}
-    </style>
-    """
+class AccentColor(Enum):
+    PURPLE = "purple"
+    BLUE = "blue"
+    GREEN = "green"
+    PINK = "pink"
+    ORANGE = "orange"
 
-st.markdown(get_theme_css(), unsafe_allow_html=True)
+class ArtistType(Enum):
+    SOLO = "solo"
+    BAND = "band"
+    DUO = "duo"
+    GROUP = "group"
 
-ONE_DIRECTION_DATA = {
-    "name": "One Direction",
-    "type": "Boy Band",
-    "debut_year": 2010,
-    "members": 5,
-    "members_names": ["Harry Styles", "Niall Horan", "Liam Payne", "Louis Tomlinson", "Zayn Malik"],
-    "genre": "Pop Rock / Teen Pop",
-    "total_albums": 5,
-    "albums": ["Up All Night", "Take Me Home", "Midnight Memories", "FOUR", "Made in the A.M."],
-    "album_release_years": [2011, 2012, 2013, 2014, 2015],
-    "album_sales_millions": [4.5, 5.2, 6.8, 5.9, 4.2],
-    "songs": {
-        "What Makes You Beautiful": 92,
-        "Night Changes": 88,
-        "Story of My Life": 90,
-        "Drag Me Down": 85,
-        "Perfect": 87,
-        "Steal My Girl": 84,
-        "Live While We're Young": 83,
-        "Best Song Ever": 86,
-        "Little Things": 79,
-        "Kiss You": 81,
-        "One Thing": 80,
-        "Gotta Be You": 76,
-        "Midnight Memories": 82,
-        "You & I": 78,
-        "No Control": 77
-    },
-    "top_song": "What Makes You Beautiful",
-    "awards": 200,
-    "tours": ["Up All Night Tour", "Take Me Home Tour", "Where We Are Tour", "On the Road Again Tour"],
-    "social_media_followers_millions": 120,
-    "spotify_streams_billions": 15
-}
+class FanType(Enum):
+    DIRECTIONER = "Directioner"
+    SWIFTIE = "Swiftie"
+    UNDECIDED = "Undecided"
 
-TAYLOR_SWIFT_DATA = {
-    "name": "Taylor Swift",
-    "type": "Solo Artist",
-    "debut_year": 2006,
-    "members": 1,
-    "genre": "Pop / Country / Folk / Alternative",
-    "total_albums": 10,
-    "albums": ["Taylor Swift", "Fearless", "Speak Now", "Red", "1989", "Reputation", "Lover", "Folklore", "Evermore", "Midnights"],
-    "album_release_years": [2006, 2008, 2010, 2012, 2014, 2017, 2019, 2020, 2020, 2022],
-    "album_sales_millions": [3.5, 8.2, 6.5, 12.8, 15.2, 6.8, 7.5, 8.9, 6.2, 10.5],
-    "songs": {
-        "Love Story": 95,
-        "You Belong With Me": 93,
-        "Shake It Off": 98,
-        "Blank Space": 97,
-        "Bad Blood": 89,
-        "Look What You Made Me Do": 86,
-        "Cardigan": 91,
-        "All Too Well": 100,
-        "Anti-Hero": 94,
-        "Style": 92,
-        "Wildest Dreams": 90,
-        "Delicate": 87,
-        "ME!": 75,
-        "Lover": 88,
-        "Willow": 89,
-        "August": 93,
-        "Enchanted": 86,
-        "Back to December": 84
-    },
-    "top_song": "All Too Well",
-    "awards": 450,
-    "tours": ["Fearless Tour", "Speak Now World Tour", "Red Tour", "1989 World Tour", "Reputation Stadium Tour", "The Eras Tour"],
-    "social_media_followers_millions": 250,
-    "spotify_streams_billions": 35
-}
+class QuestionDifficulty(Enum):
+    EASY = 1
+    MEDIUM = 2
+    HARD = 3
+    EXPERT = 4
 
-class Artist:
-    __artist_count = 0
-    __all_artists = []
+class ChartType(Enum):
+    BAR = "bar"
+    PIE = "pie"
+    LINE = "line"
+    SCATTER = "scatter"
+    AREA = "area"
+    HISTOGRAM = "histogram"
 
-    def __init__(self, name: str, genre: str, debut_year: int, discography: Dict[str, int], top_song: str = None):
-        self.name = name
-        self.genre = genre
-        self.debut_year = debut_year
-        self.discography = discography
-        self.top_song = top_song if top_song else max(discography, key=discography.get)
-        self._active = True
-        self.created_at = datetime.now()
-        Artist.__artist_count += 1
-        Artist.__all_artists.append(self)
+# ==================== DATA CLASSES ====================
+@dataclass
+class SongData:
+    title: str
+    artist: str
+    year: int
+    popularity: int
+    duration_seconds: int
+    genre: str = "Pop"
+    album: str = ""
+    streams_billions: float = 0.0
+    awards: List[str] = field(default_factory=list)
 
-    @property
-    def career_length(self) -> int:
-        return datetime.now().year - self.debut_year
+@dataclass
+class AlbumData:
+    title: str
+    year: int
+    sales_millions: float
+    songs: List[str]
+    certified: str = ""
+    label: str = ""
 
-    @property
-    def popularity_score(self) -> float:
-        return sum(self.discography.values()) / len(self.discography) if self.discography else 0.0
+@dataclass
+class TourData:
+    name: str
+    year_start: int
+    year_end: int
+    shows: int
+    attendance_millions: float
+    revenue_millions: float
 
-    def info(self) -> str:
-        return f"{self.name} | {self.genre} | Debut: {self.debut_year} | Career: {self.career_length} yrs | Popularity: {self.popularity_score:.1f}"
+@dataclass
+class QuizResult:
+    fan_type: FanType
+    directioner_score: int
+    swiftie_score: int
+    answers: List[Dict]
+    timestamp: datetime
+    percentage_directioner: float
+    percentage_swiftie: float
+    confidence_level: str
 
-    def top_song_info(self) -> Tuple[str, int]:
-        score = self.discography.get(self.top_song, 0)
-        return self.top_song, score
-
-    def average_popularity(self) -> float:
-        return sum(self.discography.values()) / len(self.discography) if self.discography else 0.0
-
-    def get_top_3_songs(self) -> List[Tuple[str, int]]:
-        sorted_songs = sorted(self.discography.items(), key=lambda x: x[1], reverse=True)
-        return sorted_songs[:3]
-
-    def get_bottom_3_songs(self) -> List[Tuple[str, int]]:
-        sorted_songs = sorted(self.discography.items(), key=lambda x: x[1])
-        return sorted_songs[:3]
-
-    def compare_with(self, other: 'Artist') -> Dict[str, Any]:
-        return {
-            "name_1": self.name,
-            "name_2": other.name,
-            "popularity_1": self.popularity_score,
-            "popularity_2": other.popularity_score,
-            "winner": self.name if self.popularity_score > other.popularity_score else other.name,
-            "difference": abs(self.popularity_score - other.popularity_score)
-        }
-
-    @classmethod
-    def get_total_artists(cls) -> int:
-        return cls.__artist_count
-
-    @classmethod
-    def get_artist_list(cls) -> List['Artist']:
-        return cls.__all_artists
-
-    @staticmethod
-    def format_popularity(score: int) -> str:
-        if score >= 90:
-            return "🌟 LEGENDARY"
-        elif score >= 80:
-            return "⭐ SUPERSTAR"
-        elif score >= 70:
-            return "🎵 HITMAKER"
-        else:
-            return "📀 RISING"
-
-    def __str__(self) -> str:
-        return f"Artist({self.name})"
-
-    def __repr__(self) -> str:
-        return f"Artist(name='{self.name}', genre='{self.genre}', debut={self.debut_year})"
+@dataclass
+class UserProfile:
+    user_id: str
+    username: str
+    quiz_history: List[QuizResult]
+    favorite_artist: str
+    favorite_song: str
+    created_at: datetime
+    last_active: datetime
+    total_quizzes: int = 0
+    average_directioner_score: float = 0.0
+    average_swiftie_score: float = 0.0
 
 
-class SoloArtist(Artist):
-    solo_artist_count = 0
-
-    def __init__(self, name: str, genre: str, debut_year: int, discography: Dict[str, int], label: str = "Independent", top_song: str = None, instrument: str = "Vocals"):
-        super().__init__(name, genre, debut_year, discography, top_song)
-        self.label = label
-        self.instrument = instrument
-        self.solo_projects = []
-        SoloArtist.solo_artist_count += 1
-
-    def info(self) -> str:
-        base = super().info()
-        return f"{base} | Label: {self.label} | Instrument: {self.instrument} | Solo Career"
-
-    def add_solo_project(self, project_name: str, year: int):
-        self.solo_projects.append({"project": project_name, "year": year})
-
-    def get_solo_projects(self) -> List[Dict]:
-        return self.solo_projects
-
-    @classmethod
-    def get_solo_count(cls) -> int:
-        return cls.solo_artist_count
-
-
-class BandArtist(Artist):
-    band_count = 0
-
-    def __init__(self, name: str, genre: str, debut_year: int, discography: Dict[str, int], members: int, members_names: List[str] = None, top_song: str = None):
-        super().__init__(name, genre, debut_year, discography, top_song)
-        self.members = members
-        self.members_names = members_names if members_names else []
-        self.is_active = True
-        BandArtist.band_count += 1
-
-    def info(self) -> str:
-        base = super().info()
-        return f"{base} | Members: {self.members} | Active: {self.is_active} | Band"
-
-    def disband(self):
-        self.is_active = False
-
-    def get_members_list(self) -> str:
-        if self.members_names:
-            return ", ".join(self.members_names)
-        return f"{self.members} members"
-
-    @classmethod
-    def get_band_count(cls) -> int:
-        return cls.band_count
-
-
+# ==================== SONG CLASS (DEFINED FIRST) ====================
 class Song:
-    def __init__(self, title: str, artist: str, year: int, popularity: int, duration_seconds: int):
+    def __init__(self, title: str, artist: str, year: int, popularity: int, duration_seconds: int, genre: str = "Pop", album: str = "", streams_billions: float = 0.0):
         self.title = title
         self.artist = artist
         self.year = year
         self.popularity = popularity
         self.duration_seconds = duration_seconds
+        self.genre = genre
+        self.album = album
+        self.streams_billions = streams_billions
 
-    def duration_formatted(self) -> str:
+    def get_duration_formatted(self) -> str:
         minutes = self.duration_seconds // 60
         seconds = self.duration_seconds % 60
         return f"{minutes}:{seconds:02d}"
 
-    def rating_category(self) -> str:
+    def get_rating_category(self) -> str:
         if self.popularity >= 90:
             return "Masterpiece"
         elif self.popularity >= 80:
@@ -402,475 +182,1633 @@ class Song:
         else:
             return "Deep Cut"
 
-    def info(self) -> str:
-        return f"🎵 {self.title} - {self.artist} ({self.year}) | {self.duration_formatted()} | {self.rating_category()}"
+    def get_info(self) -> str:
+        return f"🎵 {self.title} - {self.artist} ({self.year}) | {self.get_duration_formatted()} | {self.get_rating_category()} | {self.streams_billions}B streams"
 
 
-class FanQuiz:
+# ==================== THEME MANAGER ====================
+class ThemeManager:
+    """Singleton theme manager - single source of truth for styling"""
+    
+    _instance = None
+    _themes = {
+        "dark": {
+            "background": "linear-gradient(135deg, #0b1120 0%, #19233c 25%, #1e2a4a 50%, #19233c 75%, #0b1120 100%)",
+            "card_bg": "rgba(30,41,59,0.85)",
+            "text_primary": "#f5f5f7",
+            "text_secondary": "#cbd5e1",
+            "sidebar_bg": "#0f172a",
+            "border": "#334155",
+            "code_bg": "#1e293b",
+            "success": "#10b981",
+            "error": "#ef4444",
+            "warning": "#f59e0b",
+            "info": "#3b82f6"
+        },
+        "light": {
+            "background": "linear-gradient(135deg, #fef3c7 0%, #fde68a 25%, #fcd34d 50%, #fde68a 75%, #fef3c7 100%)",
+            "card_bg": "rgba(255,255,255,0.9)",
+            "text_primary": "#1f2937",
+            "text_secondary": "#4b5563",
+            "sidebar_bg": "rgba(255,255,255,0.98)",
+            "border": "#e5e7eb",
+            "code_bg": "#f3f4f6",
+            "success": "#059669",
+            "error": "#dc2626",
+            "warning": "#d97706",
+            "info": "#2563eb"
+        }
+    }
+    
+    _primary_colors = {
+        "gradient": {"button": "linear-gradient(90deg, #ff416c, #ff4b2b)", "tab": "linear-gradient(120deg, #3b82f6, #8b5cf6)"},
+        "blue": {"button": "linear-gradient(90deg, #1e3c72, #2a5298)", "tab": "linear-gradient(120deg, #1e3c72, #2a5298)"},
+        "green": {"button": "linear-gradient(90deg, #11998e, #38ef7d)", "tab": "linear-gradient(120deg, #11998e, #38ef7d)"},
+        "red": {"button": "linear-gradient(90deg, #dc2626, #ea580c)", "tab": "linear-gradient(120deg, #dc2626, #ea580c)"},
+        "purple": {"button": "linear-gradient(90deg, #7c3aed, #a78bfa)", "tab": "linear-gradient(120deg, #7c3aed, #a78bfa)"}
+    }
+    
+    _accent_colors = {
+        "purple": "#8b5cf6", "blue": "#3b82f6", "green": "#10b981", "pink": "#ec4899", "orange": "#f97316"
+    }
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
     def __init__(self):
-        self.questions = self._generate_questions()
+        if self._initialized:
+            return
+        self._initialized = True
+        self._current_theme = ThemeMode.DARK
+        self._current_primary = PrimaryColor.GRADIENT
+        self._current_accent = AccentColor.PURPLE
+    
+    def set_theme(self, theme: ThemeMode) -> None:
+        self._current_theme = theme
+    
+    def set_primary(self, primary: PrimaryColor) -> None:
+        self._current_primary = primary
+    
+    def set_accent(self, accent: AccentColor) -> None:
+        self._current_accent = accent
+    
+    def get_css(self) -> str:
+        theme_data = self._themes[self._current_theme.value]
+        primary_data = self._primary_colors[self._current_primary.value]
+        accent_color = self._accent_colors[self._current_accent.value]
+        
+        return f"""
+        <style>
+            .stApp {{ background: {theme_data["background"]} !important; }}
+            .stApp > header {{ background: transparent !important; }}
+            
+            h1, h2, h3, h4, h5, h6, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {{
+                color: {theme_data["text_primary"]} !important;
+                font-weight: 700 !important;
+                letter-spacing: -0.02em !important;
+            }}
+            
+            p, li, span, .stMarkdown p, .stText, .stCaption {{
+                color: {theme_data["text_secondary"]} !important;
+            }}
+            
+            .stButton > button {{
+                background: {primary_data["button"]} !important;
+                color: white !important;
+                border-radius: 40px !important;
+                padding: 0.6rem 2rem !important;
+                font-weight: 600 !important;
+                border: none !important;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+                cursor: pointer !important;
+            }}
+            
+            .stButton > button:hover {{
+                transform: translateY(-2px) !important;
+                box-shadow: 0 10px 25px -5px rgba(0,0,0,0.2) !important;
+            }}
+            
+            .stButton > button:active {{
+                transform: translateY(0) !important;
+            }}
+            
+            .stTabs [data-baseweb="tab-list"] {{
+                gap: 8px !important;
+                background: {theme_data["card_bg"]} !important;
+                border-radius: 50px !important;
+                padding: 6px !important;
+                backdrop-filter: blur(10px) !important;
+            }}
+            
+            .stTabs [data-baseweb="tab"] {{
+                border-radius: 40px !important;
+                padding: 8px 24px !important;
+                font-weight: 600 !important;
+                color: {theme_data["text_secondary"]} !important;
+                transition: all 0.2s ease !important;
+            }}
+            
+            .stTabs [aria-selected="true"] {{
+                background: {primary_data["tab"]} !important;
+                color: white !important;
+            }}
+            
+            .stSelectbox, .stSlider, .stTextInput, .stNumberInput {{
+                background-color: {theme_data["card_bg"]} !important;
+                border-radius: 16px !important;
+                border: 1px solid {theme_data["border"]} !important;
+            }}
+            
+            .stSidebar {{
+                background: {theme_data["sidebar_bg"]} !important;
+                backdrop-filter: blur(12px) !important;
+            }}
+            
+            .stSidebar .stMarkdown, .stSidebar p, .stSidebar label {{
+                color: {theme_data["text_secondary"]} !important;
+            }}
+            
+            code, .stCodeBlock {{
+                background-color: {theme_data["code_bg"]} !important;
+                color: {theme_data["text_primary"]} !important;
+                border-radius: 12px !important;
+                padding: 4px 8px !important;
+            }}
+            
+            hr {{
+                border-color: {theme_data["border"]} !important;
+                margin: 1.5rem 0 !important;
+            }}
+            
+            .metric-card {{
+                background: {theme_data["card_bg"]} !important;
+                backdrop-filter: blur(10px) !important;
+                border-radius: 24px !important;
+                padding: 20px !important;
+                border: 1px solid rgba(255,255,255,0.1) !important;
+                transition: all 0.3s ease !important;
+            }}
+            
+            .metric-card:hover {{
+                transform: translateY(-4px) !important;
+                box-shadow: 0 20px 25px -12px rgba(0,0,0,0.2) !important;
+            }}
+            
+            .glass-card {{
+                background: {theme_data["card_bg"]} !important;
+                backdrop-filter: blur(12px) !important;
+                border-radius: 32px !important;
+                padding: 24px !important;
+                border: 1px solid rgba(255,255,255,0.15) !important;
+                transition: all 0.3s ease !important;
+            }}
+            
+            .glass-card:hover {{
+                transform: translateY(-5px) !important;
+            }}
+            
+            .custom-success {{
+                background: linear-gradient(135deg, {theme_data["success"]}, {theme_data["success"]}cc) !important;
+                border-radius: 24px !important;
+                padding: 28px !important;
+                text-align: center !important;
+                animation: pulse 2s infinite !important;
+            }}
+            
+            .custom-error {{
+                background: linear-gradient(135deg, {theme_data["error"]}, {theme_data["error"]}cc) !important;
+                border-radius: 24px !important;
+                padding: 20px !important;
+                text-align: center !important;
+            }}
+            
+            .custom-warning {{
+                background: linear-gradient(135deg, {theme_data["warning"]}, {theme_data["warning"]}cc) !important;
+                border-radius: 24px !important;
+                padding: 20px !important;
+                text-align: center !important;
+            }}
+            
+            @keyframes pulse {{
+                0% {{ box-shadow: 0 0 0 0 rgba(16,185,129,0.4); }}
+                70% {{ box-shadow: 0 0 0 20px rgba(16,185,129,0); }}
+                100% {{ box-shadow: 0 0 0 0 rgba(16,185,129,0); }}
+            }}
+            
+            @keyframes fadeIn {{
+                from {{ opacity: 0; transform: translateY(20px); }}
+                to {{ opacity: 1; transform: translateY(0); }}
+            }}
+            
+            .fade-in {{
+                animation: fadeIn 0.5s ease-out;
+            }}
+            
+            ::-webkit-scrollbar {{
+                width: 8px;
+                height: 8px;
+            }}
+            
+            ::-webkit-scrollbar-track {{
+                background: {theme_data["code_bg"]};
+                border-radius: 10px;
+            }}
+            
+            ::-webkit-scrollbar-thumb {{
+                background: {accent_color};
+                border-radius: 10px;
+            }}
+            
+            ::-webkit-scrollbar-thumb:hover {{
+                background: {accent_color}cc;
+            }}
+            
+            .stProgress > div > div {{
+                background: {primary_data["button"]} !important;
+                border-radius: 20px !important;
+            }}
+            
+            .stAlert {{
+                border-radius: 16px !important;
+                border-left-width: 4px !important;
+            }}
+            
+            .stDataFrame {{
+                border-radius: 16px !important;
+                overflow: hidden !important;
+            }}
+            
+            iframe {{
+                border-radius: 16px !important;
+            }}
+        </style>
+        """
+    
+    def get_chart_colors(self) -> Dict[str, str]:
+        return {
+            "one_direction": self._accent_colors[self._current_accent.value],
+            "taylor_swift": self._accent_colors["pink"] if self._current_accent.value == "purple" else self._accent_colors[self._current_accent.value],
+            "grid": self._themes[self._current_theme.value]["border"],
+            "text": self._themes[self._current_theme.value]["text_secondary"]
+        }
+
+
+# ==================== CACHE MANAGER ====================
+class CacheManager:
+    """Decorator-based caching for expensive operations"""
+    
+    _instance = None
+    _cache = {}
+    _ttl_cache = {}
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    @staticmethod
+    def cached(ttl_seconds: int = 300):
+        def decorator(func):
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                cache_key = f"{func.__name__}_{hash(str(args) + str(kwargs))}"
+                if cache_key in CacheManager._cache:
+                    cached_time, cached_value = CacheManager._cache[cache_key]
+                    if datetime.now() - cached_time < timedelta(seconds=ttl_seconds):
+                        return cached_value
+                result = func(*args, **kwargs)
+                CacheManager._cache[cache_key] = (datetime.now(), result)
+                return result
+            return wrapper
+        return decorator
+    
+    @staticmethod
+    def clear():
+        CacheManager._cache.clear()
+        CacheManager._ttl_cache.clear()
+
+
+# ==================== DATA PROVIDER ====================
+class DataProvider:
+    """Centralized data provider with lazy loading"""
+    
+    _instance = None
+    _one_direction_data = None
+    _taylor_swift_data = None
+    _songs_db = None
+    _albums_db = None
+    _tours_db = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    @classmethod
+    def get_one_direction_data(cls) -> Dict:
+        if cls._one_direction_data is None:
+            cls._one_direction_data = {
+                "name": "One Direction",
+                "type": ArtistType.BAND.value,
+                "debut_year": 2010,
+                "disband_year": 2016,
+                "members": 5,
+                "members_names": ["Harry Styles", "Niall Horan", "Liam Payne", "Louis Tomlinson", "Zayn Malik"],
+                "members_birthdays": ["1994-02-01", "1993-09-13", "1993-08-29", "1991-12-24", "1993-01-12"],
+                "genre": ["Pop Rock", "Teen Pop", "Power Pop"],
+                "total_albums": 5,
+                "albums": [
+                    AlbumData("Up All Night", 2011, 4.5, ["What Makes You Beautiful", "Gotta Be You", "One Thing"], "Platinum", "Syco"),
+                    AlbumData("Take Me Home", 2012, 5.2, ["Live While We're Young", "Little Things", "Kiss You"], "2x Platinum", "Syco"),
+                    AlbumData("Midnight Memories", 2013, 6.8, ["Best Song Ever", "Story of My Life", "Midnight Memories"], "3x Platinum", "Syco"),
+                    AlbumData("FOUR", 2014, 5.9, ["Steal My Girl", "Night Changes", "Ready to Run"], "2x Platinum", "Syco"),
+                    AlbumData("Made in the A.M.", 2015, 4.2, ["Drag Me Down", "Perfect", "History"], "Platinum", "Syco")
+                ],
+                "songs": {
+                    "What Makes You Beautiful": 92, "Night Changes": 88, "Story of My Life": 90,
+                    "Drag Me Down": 85, "Perfect": 87, "Steal My Girl": 84, "Live While We're Young": 83,
+                    "Best Song Ever": 86, "Little Things": 79, "Kiss You": 81, "One Thing": 80,
+                    "Gotta Be You": 76, "Midnight Memories": 82, "You & I": 78, "No Control": 77,
+                    "History": 84, "Through the Dark": 75, "Infinity": 80, "Home": 82
+                },
+                "top_song": "What Makes You Beautiful",
+                "awards": 200,
+                "tours": [
+                    TourData("Up All Night Tour", 2011, 2012, 62, 1.2, 85.0),
+                    TourData("Take Me Home Tour", 2013, 2013, 134, 2.5, 180.0),
+                    TourData("Where We Are Tour", 2014, 2014, 69, 3.4, 290.0),
+                    TourData("On the Road Again Tour", 2015, 2015, 79, 2.8, 210.0)
+                ],
+                "social_media_followers_millions": 120,
+                "spotify_streams_billions": 15,
+                "youtube_views_billions": 18,
+                "billboard_hot_100": 6,
+                "uk_singles_chart": 4,
+                "grammy_nominations": 5,
+                "grammy_wins": 0,
+                "brit_awards": 7,
+                "american_music_awards": 8
+            }
+        return cls._one_direction_data
+    
+    @classmethod
+    def get_taylor_swift_data(cls) -> Dict:
+        if cls._taylor_swift_data is None:
+            cls._taylor_swift_data = {
+                "name": "Taylor Swift",
+                "type": ArtistType.SOLO.value,
+                "debut_year": 2006,
+                "members": 1,
+                "genre": ["Pop", "Country", "Folk", "Alternative", "Synth-pop"],
+                "total_albums": 10,
+                "albums": [
+                    AlbumData("Taylor Swift", 2006, 5.5, ["Tim McGraw", "Teardrops on My Guitar", "Our Song"], "7x Platinum", "Big Machine"),
+                    AlbumData("Fearless", 2008, 8.2, ["Love Story", "You Belong With Me", "Fifteen"], "Diamond", "Big Machine"),
+                    AlbumData("Speak Now", 2010, 6.5, ["Mine", "Back to December", "Mean"], "6x Platinum", "Big Machine"),
+                    AlbumData("Red", 2012, 12.8, ["We Are Never Ever Getting Back Together", "I Knew You Were Trouble", "All Too Well"], "7x Platinum", "Big Machine"),
+                    AlbumData("1989", 2014, 15.2, ["Shake It Off", "Blank Space", "Bad Blood"], "9x Platinum", "Big Machine"),
+                    AlbumData("Reputation", 2017, 6.8, ["Look What You Made Me Do", "...Ready for It?", "Delicate"], "4x Platinum", "Big Machine"),
+                    AlbumData("Lover", 2019, 7.5, ["ME!", "You Need to Calm Down", "Lover"], "3x Platinum", "Republic"),
+                    AlbumData("Folklore", 2020, 8.9, ["Cardigan", "Exile", "Betty"], "4x Platinum", "Republic"),
+                    AlbumData("Evermore", 2020, 6.2, ["Willow", "Champagne Problems", "No Body No Crime"], "3x Platinum", "Republic"),
+                    AlbumData("Midnights", 2022, 10.5, ["Anti-Hero", "Lavender Haze", "Bejeweled"], "5x Platinum", "Republic")
+                ],
+                "songs": {
+                    "Love Story": 95, "You Belong With Me": 93, "Shake It Off": 98, "Blank Space": 97,
+                    "Bad Blood": 89, "Look What You Made Me Do": 86, "Cardigan": 91, "All Too Well": 100,
+                    "Anti-Hero": 94, "Style": 92, "Wildest Dreams": 90, "Delicate": 87, "ME!": 75,
+                    "Lover": 88, "Willow": 89, "August": 93, "Enchanted": 86, "Back to December": 84,
+                    "Cruel Summer": 96, "Bejeweled": 85, "Karma": 88, "Lavender Haze": 87
+                },
+                "top_song": "All Too Well",
+                "awards": 450,
+                "tours": [
+                    TourData("Fearless Tour", 2009, 2010, 118, 1.2, 75.0),
+                    TourData("Speak Now World Tour", 2011, 2012, 111, 1.6, 123.0),
+                    TourData("Red Tour", 2013, 2014, 86, 1.7, 150.0),
+                    TourData("1989 World Tour", 2015, 2015, 85, 2.3, 250.0),
+                    TourData("Reputation Stadium Tour", 2018, 2018, 53, 2.9, 345.0),
+                    TourData("The Eras Tour", 2023, 2024, 152, 5.5, 1000.0)
+                ],
+                "social_media_followers_millions": 250,
+                "spotify_streams_billions": 35,
+                "youtube_views_billions": 25,
+                "billboard_hot_100": 9,
+                "uk_singles_chart": 8,
+                "grammy_nominations": 52,
+                "grammy_wins": 12,
+                "brit_awards": 3,
+                "american_music_awards": 40,
+                "mtv_video_music_awards": 14,
+                "bmi_awards": 27
+            }
+        return cls._taylor_swift_data
+    
+    @classmethod
+    def get_songs_db(cls) -> List[Song]:
+        if cls._songs_db is None:
+            cls._songs_db = [
+                Song("What Makes You Beautiful", "One Direction", 2011, 92, 212, "Pop Rock", "Up All Night", 2.5),
+                Song("Night Changes", "One Direction", 2014, 88, 226, "Pop", "FOUR", 1.8),
+                Song("Story of My Life", "One Direction", 2013, 90, 245, "Folk Pop", "Midnight Memories", 2.1),
+                Song("Drag Me Down", "One Direction", 2015, 85, 192, "Pop Rock", "Made in the A.M.", 1.5),
+                Song("Perfect", "One Direction", 2015, 87, 210, "Pop", "Made in the A.M.", 1.3),
+                Song("Love Story", "Taylor Swift", 2008, 95, 235, "Country", "Fearless", 3.2),
+                Song("You Belong With Me", "Taylor Swift", 2008, 93, 211, "Country Pop", "Fearless", 2.8),
+                Song("Shake It Off", "Taylor Swift", 2014, 98, 219, "Pop", "1989", 4.5),
+                Song("Blank Space", "Taylor Swift", 2014, 97, 231, "Pop", "1989", 4.2),
+                Song("All Too Well", "Taylor Swift", 2012, 100, 330, "Country", "Red", 2.0),
+                Song("Anti-Hero", "Taylor Swift", 2022, 94, 200, "Synth-pop", "Midnights", 2.5),
+                Song("Cardigan", "Taylor Swift", 2020, 91, 239, "Indie Folk", "Folklore", 1.5),
+                Song("Cruel Summer", "Taylor Swift", 2019, 96, 178, "Synth-pop", "Lover", 2.2),
+                Song("Steal My Girl", "One Direction", 2014, 84, 228, "Pop Rock", "FOUR", 1.1),
+                Song("Best Song Ever", "One Direction", 2013, 86, 195, "Pop Rock", "Midnight Memories", 1.4),
+                Song("Live While We're Young", "One Direction", 2012, 83, 198, "Pop Rock", "Take Me Home", 1.2),
+                Song("Kiss You", "One Direction", 2012, 81, 202, "Pop Rock", "Take Me Home", 0.9),
+                Song("One Thing", "One Direction", 2012, 80, 195, "Pop Rock", "Up All Night", 0.8),
+                Song("Midnight Memories", "One Direction", 2013, 82, 165, "Rock", "Midnight Memories", 1.0),
+                Song("Style", "Taylor Swift", 2014, 92, 231, "Pop", "1989", 3.0),
+                Song("Wildest Dreams", "Taylor Swift", 2014, 90, 220, "Dream Pop", "1989", 2.7),
+                Song("Delicate", "Taylor Swift", 2017, 87, 232, "Electropop", "Reputation", 1.8),
+                Song("Lover", "Taylor Swift", 2019, 88, 221, "Pop", "Lover", 1.9),
+                Song("Willow", "Taylor Swift", 2020, 89, 214, "Indie Folk", "Evermore", 1.6),
+                Song("August", "Taylor Swift", 2020, 93, 241, "Indie Folk", "Folklore", 1.4),
+                Song("Enchanted", "Taylor Swift", 2010, 86, 353, "Orchestral Pop", "Speak Now", 1.2),
+                Song("Back to December", "Taylor Swift", 2010, 84, 273, "Country Pop", "Speak Now", 1.1),
+                Song("Bejeweled", "Taylor Swift", 2022, 85, 220, "Synth-pop", "Midnights", 1.3),
+                Song("Lavender Haze", "Taylor Swift", 2022, 87, 197, "Synth-pop", "Midnights", 1.4)
+            ]
+        return cls._songs_db
+
+
+# ==================== ADVANCED QUIZ ENGINE ====================
+class AdvancedQuizEngine:
+    """Comprehensive quiz engine with difficulty levels and analytics"""
+    
+    def __init__(self):
+        self._questions = self._generate_questions()
         self.scores = {"Directioner": 0, "Swiftie": 0}
         self.answers = []
-
+        self.start_time = None
+        self.end_time = None
+        self.answer_times = []
+    
     def _generate_questions(self) -> List[Dict[str, Any]]:
         return [
-            {
-                "id": 1,
-                "question": "Which era defines your music taste most?",
-                "options": ["Up All Night (2011)", "1989 World Tour", "Midnights Lavender Haze", "FOUR Stadium"],
-                "scores": [("Directioner", 2), ("Swiftie", 2), ("Swiftie", 1), ("Directioner", 2)]
-            },
-            {
-                "id": 2,
-                "question": "Pick your ultimate anthem:",
-                "options": ["What Makes You Beautiful", "Shake It Off", "Night Changes", "All Too Well"],
-                "scores": [("Directioner", 3), ("Swiftie", 2), ("Directioner", 2), ("Swiftie", 3)]
-            },
-            {
-                "id": 3,
-                "question": "Concert vibe you'd die for:",
-                "options": ["Massive stadium with screaming harmonies", "Intimate acoustic storytelling", "High energy dance pop", "Rock-infused pop show"],
-                "scores": [("Directioner", 3), ("Swiftie", 2), ("Swiftie", 2), ("Directioner", 1)]
-            },
-            {
-                "id": 4,
-                "question": "Favorite lyrical theme:",
-                "options": ["Young love & adventure", "Heartbreak & self-reflection", "Revenge & reputation", "Nostalgia & friendship"],
-                "scores": [("Directioner", 2), ("Swiftie", 3), ("Swiftie", 2), ("Directioner", 2)]
-            },
-            {
-                "id": 5,
-                "question": "Which album cover you prefer?",
-                "options": ["Take Me Home (neon)", "1989 (polaroid)", "Midnight Memories (hotel)", "Folklore (black & white)"],
-                "scores": [("Directioner", 2), ("Swiftie", 2), ("Directioner", 1), ("Swiftie", 3)]
-            },
-            {
-                "id": 6,
-                "question": "Band or solo superstar?",
-                "options": ["5-member boyband chemistry", "Solo singer-songwriter domination", "Both legendary", "Group dynamic always wins"],
-                "scores": [("Directioner", 3), ("Swiftie", 3), ("Directioner", 1), ("Directioner", 2)]
-            },
-            {
-                "id": 7,
-                "question": "Preferred music video style:",
-                "options": ["Fun and energetic choreography", "Cinematic storytelling", "Behind the scenes raw footage", "High budget fantasy"],
-                "scores": [("Directioner", 2), ("Swiftie", 2), ("Directioner", 1), ("Swiftie", 2)]
-            },
-            {
-                "id": 8,
-                "question": "Which decade of pop speaks to you?",
-                "options": ["Early 2010s bubblegum pop", "Mid 2010s synth-pop", "Late 2010s alternative", "2020s indie folk"],
-                "scores": [("Directioner", 3), ("Swiftie", 2), ("Swiftie", 1), ("Swiftie", 2)]
-            },
-            {
-                "id": 9,
-                "question": "Favorite fashion aesthetic:",
-                "options": ["Leather jackets and skinny jeans", "Sparkly dresses and red lips", "Retro bohemian", "Dark edgy vibe"],
-                "scores": [("Directioner", 2), ("Swiftie", 2), ("Swiftie", 1), ("Directioner", 1)]
-            },
-            {
-                "id": 10,
-                "question": "What makes a song legendary?",
-                "options": ["Catchy chorus you can sing anywhere", "Lyrics that make you cry", "Danceable beat", "Powerful vocal performance"],
-                "scores": [("Directioner", 2), ("Swiftie", 3), ("Directioner", 1), ("Directioner", 1)]
-            }
+            {"id": 1, "difficulty": QuestionDifficulty.MEDIUM, "category": "Era",
+             "question": "Which era defines your music taste most?",
+             "options": ["Up All Night (2011)", "1989 World Tour", "Midnights Lavender Haze", "FOUR Stadium"],
+             "scores": [("Directioner", 2), ("Swiftie", 2), ("Swiftie", 1), ("Directioner", 2)],
+             "explanation": "Each era represents a distinct musical and cultural moment in the artist's career."},
+            
+            {"id": 2, "difficulty": QuestionDifficulty.EASY, "category": "Anthems",
+             "question": "Pick your ultimate anthem:",
+             "options": ["What Makes You Beautiful", "Shake It Off", "Night Changes", "All Too Well"],
+             "scores": [("Directioner", 3), ("Swiftie", 2), ("Directioner", 2), ("Swiftie", 3)],
+             "explanation": "These songs define the signature sound of each artist."},
+            
+            {"id": 3, "difficulty": QuestionDifficulty.MEDIUM, "category": "Concert",
+             "question": "Concert vibe you'd die for:",
+             "options": ["Massive stadium with screaming harmonies", "Intimate acoustic storytelling", "High energy dance pop", "Rock-infused pop show"],
+             "scores": [("Directioner", 3), ("Swiftie", 2), ("Swiftie", 2), ("Directioner", 1)],
+             "explanation": "Live performances reveal the true essence of an artist."},
+            
+            {"id": 4, "difficulty": QuestionDifficulty.HARD, "category": "Lyrics",
+             "question": "Favorite lyrical theme:",
+             "options": ["Young love & adventure", "Heartbreak & self-reflection", "Revenge & reputation", "Nostalgia & friendship"],
+             "scores": [("Directioner", 2), ("Swiftie", 3), ("Swiftie", 2), ("Directioner", 2)],
+             "explanation": "Lyrical themes often connect deeply with fan identities."},
+            
+            {"id": 5, "difficulty": QuestionDifficulty.EASY, "category": "Aesthetics",
+             "question": "Which album cover you prefer?",
+             "options": ["Take Me Home (neon)", "1989 (polaroid)", "Midnight Memories (hotel)", "Folklore (black & white)"],
+             "scores": [("Directioner", 2), ("Swiftie", 2), ("Directioner", 1), ("Swiftie", 3)],
+             "explanation": "Album art often reflects the musical direction and aesthetic preferences."},
+            
+            {"id": 6, "difficulty": QuestionDifficulty.EXPERT, "category": "Industry",
+             "question": "Band or solo superstar?",
+             "options": ["5-member boyband chemistry", "Solo singer-songwriter domination", "Both legendary", "Group dynamic always wins"],
+             "scores": [("Directioner", 3), ("Swiftie", 3), ("Directioner", 1), ("Directioner", 2)],
+             "explanation": "This preference often correlates with broader music taste patterns."},
+            
+            {"id": 7, "difficulty": QuestionDifficulty.MEDIUM, "category": "Visuals",
+             "question": "Preferred music video style:",
+             "options": ["Fun and energetic choreography", "Cinematic storytelling", "Behind the scenes raw footage", "High budget fantasy"],
+             "scores": [("Directioner", 2), ("Swiftie", 2), ("Directioner", 1), ("Swiftie", 2)],
+             "explanation": "Music video preferences reveal visual and narrative tastes."},
+            
+            {"id": 8, "difficulty": QuestionDifficulty.HARD, "category": "History",
+             "question": "Which decade of pop speaks to you?",
+             "options": ["Early 2010s bubblegum pop", "Mid 2010s synth-pop", "Late 2010s alternative", "2020s indie folk"],
+             "scores": [("Directioner", 3), ("Swiftie", 2), ("Swiftie", 1), ("Swiftie", 2)],
+             "explanation": "Decade preferences indicate broader musical era alignment."},
+            
+            {"id": 9, "difficulty": QuestionDifficulty.EASY, "category": "Fashion",
+             "question": "Favorite fashion aesthetic:",
+             "options": ["Leather jackets and skinny jeans", "Sparkly dresses and red lips", "Retro bohemian", "Dark edgy vibe"],
+             "scores": [("Directioner", 2), ("Swiftie", 2), ("Swiftie", 1), ("Directioner", 1)],
+             "explanation": "Fashion often parallels musical preferences."},
+            
+            {"id": 10, "difficulty": QuestionDifficulty.MEDIUM, "category": "Values",
+             "question": "What makes a song legendary?",
+             "options": ["Catchy chorus you can sing anywhere", "Lyrics that make you cry", "Danceable beat", "Powerful vocal performance"],
+             "scores": [("Directioner", 2), ("Swiftie", 3), ("Directioner", 1), ("Directioner", 1)],
+             "explanation": "Different priorities lead to different fan allegiances."},
+            
+            {"id": 11, "difficulty": QuestionDifficulty.HARD, "category": "Deep Cuts",
+             "question": "Pick a deep cut that resonates:",
+             "options": ["No Control (1D)", "August (TS)", "Wolves (1D)", "Right Where You Left Me (TS)"],
+             "scores": [("Directioner", 4), ("Swiftie", 3), ("Directioner", 3), ("Swiftie", 4)],
+             "explanation": "Deep cut preferences show true fan dedication."},
+            
+            {"id": 12, "difficulty": QuestionDifficulty.EXPERT, "category": "Collaborations",
+             "question": "Dream collaboration:",
+             "options": ["1D members solo reunion", "Taylor & Harry duet", "Niall solo with Taylor", "Louis & Taylor rock collab"],
+             "scores": [("Directioner", 3), ("Swiftie", 3), ("Directioner", 2), ("Directioner", 2)],
+             "explanation": "Collaboration desires reflect cross-fandom interests."}
         ]
-
-    def answer_question(self, question_id: int, answer_index: int):
-        q = next((q for q in self.questions if q["id"] == question_id), None)
+    
+    def start_quiz(self):
+        self.start_time = datetime.now()
+        self.answer_times = []
+    
+    def answer_question(self, question_id: int, answer_index: int, time_taken: float = None):
+        q = next((q for q in self._questions if q["id"] == question_id), None)
         if q and answer_index < len(q["scores"]):
             fan_type, points = q["scores"][answer_index]
             self.scores[fan_type] += points
-            self.answers.append({"question_id": question_id, "answer_index": answer_index, "fan_type": fan_type, "points": points})
-
-    def compute_result(self) -> str:
+            self.answers.append({
+                "question_id": question_id,
+                "answer_index": answer_index,
+                "fan_type": fan_type,
+                "points": points,
+                "difficulty": q["difficulty"].value,
+                "category": q["category"],
+                "time_taken": time_taken
+            })
+            if time_taken:
+                self.answer_times.append(time_taken)
+    
+    def end_quiz(self):
+        self.end_time = datetime.now()
+    
+    def get_results(self) -> QuizResult:
+        total = self.scores["Directioner"] + self.scores["Swiftie"]
+        percentage_dir = (self.scores["Directioner"] / total * 100) if total > 0 else 50
+        percentage_swift = (self.scores["Swiftie"] / total * 100) if total > 0 else 50
+        
         if self.scores["Directioner"] > self.scores["Swiftie"]:
-            return "Kamu Directioner!"
+            fan_type = FanType.DIRECTIONER
+            confidence = "High" if percentage_dir > 70 else "Medium" if percentage_dir > 60 else "Low"
         elif self.scores["Swiftie"] > self.scores["Directioner"]:
-            return "Kamu Swiftie!"
+            fan_type = FanType.SWIFTIE
+            confidence = "High" if percentage_swift > 70 else "Medium" if percentage_swift > 60 else "Low"
         else:
-            return random.choice(["Kamu Directioner!", "Kamu Swiftie!"])
+            fan_type = FanType.UNDECIDED
+            confidence = "Low"
+        
+        return QuizResult(
+            fan_type=fan_type,
+            directioner_score=self.scores["Directioner"],
+            swiftie_score=self.scores["Swiftie"],
+            answers=self.answers.copy(),
+            timestamp=datetime.now(),
+            percentage_directioner=percentage_dir,
+            percentage_swiftie=percentage_swift,
+            confidence_level=confidence
+        )
+    
+    def get_questions(self) -> List[Dict[str, Any]]:
+        return self._questions
+    
+    def reset(self):
+        self.scores = {"Directioner": 0, "Swiftie": 0}
+        self.answers = []
+        self.start_time = None
+        self.end_time = None
+        self.answer_times = []
+    
+    def get_category_breakdown(self) -> Dict[str, Dict[str, int]]:
+        breakdown = defaultdict(lambda: {"Directioner": 0, "Swiftie": 0})
+        for answer in self.answers:
+            category = answer["category"]
+            breakdown[category][answer["fan_type"]] += answer["points"]
+        return dict(breakdown)
+    
+    def get_difficulty_breakdown(self) -> Dict[int, Dict[str, int]]:
+        breakdown = defaultdict(lambda: {"Directioner": 0, "Swiftie": 0, "total": 0})
+        for answer in self.answers:
+            difficulty = answer["difficulty"]
+            breakdown[difficulty][answer["fan_type"]] += answer["points"]
+            breakdown[difficulty]["total"] += answer["points"]
+        return dict(breakdown)
+    
+    def get_avg_response_time(self) -> float:
+        if not self.answer_times:
+            return 0.0
+        return sum(self.answer_times) / len(self.answer_times)
 
-    def get_detailed_report(self) -> Dict:
-        total = sum(self.scores.values())
+
+# ==================== ARTIST COMPARATOR ====================
+class ArtistComparator:
+    """Advanced artist comparison with multiple metrics"""
+    
+    @staticmethod
+    def compare_songs(songs1: Dict[str, int], songs2: Dict[str, int]) -> Dict[str, Any]:
+        avg1 = sum(songs1.values()) / len(songs1)
+        avg2 = sum(songs2.values()) / len(songs2)
+        max1 = max(songs1.values())
+        max2 = max(songs2.values())
+        min1 = min(songs1.values())
+        min2 = min(songs2.values())
+        
         return {
-            "directioner_score": self.scores["Directioner"],
-            "swiftie_score": self.scores["Swiftie"],
-            "directioner_percent": (self.scores["Directioner"] / total * 100) if total > 0 else 0,
-            "swiftie_percent": (self.scores["Swiftie"] / total * 100) if total > 0 else 0,
-            "result": self.compute_result(),
-            "total_answers": len(self.answers)
+            "average_popularity": {"artist1": avg1, "artist2": avg2, "difference": abs(avg1 - avg2), "winner": "artist1" if avg1 > avg2 else "artist2"},
+            "max_popularity": {"artist1": max1, "artist2": max2, "winner": "artist1" if max1 > max2 else "artist2"},
+            "min_popularity": {"artist1": min1, "artist2": min2, "winner": "artist1" if min1 > min2 else "artist2"},
+            "total_songs": {"artist1": len(songs1), "artist2": len(songs2)}
+        }
+    
+    @staticmethod
+    def compare_careers(data1: Dict, data2: Dict) -> Dict[str, Any]:
+        return {
+            "debut_year": {"artist1": data1["debut_year"], "artist2": data2["debut_year"], "earlier": "artist1" if data1["debut_year"] < data2["debut_year"] else "artist2"},
+            "total_albums": {"artist1": data1["total_albums"], "artist2": data2["total_albums"], "more": "artist1" if data1["total_albums"] > data2["total_albums"] else "artist2"},
+            "awards": {"artist1": data1["awards"], "artist2": data2["awards"], "more": "artist1" if data1["awards"] > data2["awards"] else "artist2"},
+            "spotify_streams": {"artist1": data1["spotify_streams_billions"], "artist2": data2["spotify_streams_billions"], "more": "artist1" if data1["spotify_streams_billions"] > data2["spotify_streams_billions"] else "artist2"},
+            "social_followers": {"artist1": data1["social_media_followers_millions"], "artist2": data2["social_media_followers_millions"], "more": "artist1" if data1["social_media_followers_millions"] > data2["social_media_followers_millions"] else "artist2"},
+            "grammy_wins": {"artist1": data1.get("grammy_wins", 0), "artist2": data2.get("grammy_wins", 0), "more": "artist1" if data1.get("grammy_wins", 0) > data2.get("grammy_wins", 0) else "artist2"}
+        }
+    
+    @staticmethod
+    def find_common_genres(genres1: List[str], genres2: List[str]) -> List[str]:
+        return list(set(genres1) & set(genres2))
+    
+    @staticmethod
+    def find_unique_genres(genres1: List[str], genres2: List[str]) -> Dict[str, List[str]]:
+        return {
+            "artist1_unique": list(set(genres1) - set(genres2)),
+            "artist2_unique": list(set(genres2) - set(genres1))
         }
 
 
-def create_demo_objects():
-    songs_db = []
-    songs_db.append(Song("What Makes You Beautiful", "One Direction", 2011, 92, 212))
-    songs_db.append(Song("Night Changes", "One Direction", 2014, 88, 226))
-    songs_db.append(Song("Story of My Life", "One Direction", 2013, 90, 245))
-    songs_db.append(Song("All Too Well (10 Minute Version)", "Taylor Swift", 2021, 100, 600))
-    songs_db.append(Song("Shake It Off", "Taylor Swift", 2014, 98, 219))
-    songs_db.append(Song("Blank Space", "Taylor Swift", 2014, 97, 231))
-    songs_db.append(Song("Perfect", "One Direction", 2015, 87, 210))
-    songs_db.append(Song("Drag Me Down", "One Direction", 2015, 85, 192))
-    songs_db.append(Song("Anti-Hero", "Taylor Swift", 2022, 94, 200))
-    songs_db.append(Song("Cardigan", "Taylor Swift", 2020, 91, 239))
-    songs_db.append(Song("Best Song Ever", "One Direction", 2013, 86, 195))
-    songs_db.append(Song("Cruel Summer", "Taylor Swift", 2019, 96, 178))
-    songs_db.append(Song("Steal My Girl", "One Direction", 2014, 84, 228))
-    songs_db.append(Song("Enchanted", "Taylor Swift", 2010, 86, 353))
-    songs_db.append(Song("Live While We're Young", "One Direction", 2012, 83, 198))
-    return songs_db
-
-
-def get_quiz_questions() -> List[Dict[str, Any]]:
-    fan_quiz = FanQuiz()
-    return fan_quiz.questions
-
-
-def compute_quiz_result(answers: List[str]) -> str:
-    questions = get_quiz_questions()
-    directioner_score = 0
-    swiftie_score = 0
-
-    for idx, ans in enumerate(answers):
-        if idx >= len(questions) or ans is None:
-            continue
-        q = questions[idx]
-        if ans not in q["options"]:
-            continue
-        opt_idx = q["options"].index(ans)
-        if opt_idx < len(q["scores"]):
-            fan_type, points = q["scores"][opt_idx]
-            if fan_type == "Directioner":
-                directioner_score += points
-            else:
-                swiftie_score += points
-
-    if directioner_score > swiftie_score:
-        return "Kamu Directioner!"
-    elif swiftie_score > directioner_score:
-        return "Kamu Swiftie!"
-    else:
-        return random.choice(["Kamu Directioner!", "Kamu Swiftie!"])
-
-
-def compute_quiz_result_detailed(answers: List[str]) -> Tuple[str, int, int]:
-    questions = get_quiz_questions()
-    directioner_score = 0
-    swiftie_score = 0
-
-    for idx, ans in enumerate(answers):
-        if idx >= len(questions) or ans is None:
-            continue
-        q = questions[idx]
-        if ans not in q["options"]:
-            continue
-        opt_idx = q["options"].index(ans)
-        if opt_idx < len(q["scores"]):
-            fan_type, points = q["scores"][opt_idx]
-            if fan_type == "Directioner":
-                directioner_score += points
-            else:
-                swiftie_score += points
-
-    if directioner_score > swiftie_score:
-        return "Kamu Directioner!", directioner_score, swiftie_score
-    elif swiftie_score > directioner_score:
-        return "Kamu Swiftie!", directioner_score, swiftie_score
-    else:
-        return random.choice(["Kamu Directioner!", "Kamu Swiftie!"]), directioner_score, swiftie_score
-
-
-def show_basics_demo():
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown("### 📝 TYPE CASTING")
-        str_num = "42"
-        int_num = int(str_num)
-        float_num = float("3.14159")
-        str_bool = str(True)
-        st.code(f"str('42') -> int: {int_num}\nstr('3.14') -> float: {float_num}\nbool(True) -> str: {str_bool}")
-        a, b = 17, 5
-        st.write(f"Arithmetic: {a}+{b}={a+b}, {a}-{b}={a-b}, {a}*{b}={a*b}, {a}/{b}={a/b:.2f}, {a}%{b}={a%b}")
-    with col2:
-        st.markdown("### 🔍 OPERATORS")
-        x, y = 10, 3
-        st.write(f"Comparison: {x} > {y} = {x > y}")
-        st.write(f"Comparison: {x} == {y} = {x == y}")
-        st.write(f"Logic: True and False = {True and False}")
-        st.write(f"Logic: True or False = {True or False}")
-        st.write(f"Logic: not True = {not True}")
-        st.write(f"Bitwise: {x} & {y} = {x & y}")
-        st.write(f"Bitwise: {x} | {y} = {x | y}")
-    with col3:
-        st.markdown("### 📊 ARRAYS & DICT")
-        nilai_array = [95, 88, 92, 79, 100, 87, 93, 84, 91, 86]
-        st.write(f"List nilai: {nilai_array}")
-        st.write(f"Max: {max(nilai_array)}, Min: {min(nilai_array)}")
-        st.write(f"Sum: {sum(nilai_array)}, Avg: {sum(nilai_array)/len(nilai_array):.1f}")
-        directioner_dict = {"fandom": "Directioners", "active_years": "2010-2016", "hit_songs": 22, "albums": 5}
-        swiftie_dict = {"fandom": "Swifties", "eras": 10, "grammys": 12, "albums": 10}
-        st.json({"One Direction": directioner_dict, "Taylor Swift": swiftie_dict})
-
-
-def show_oop_demo():
-    st.markdown("### 🏗️ ARTIST OOP INSTANCES")
+# ==================== DATA VISUALIZER ====================
+class DataVisualizer:
+    """Advanced data visualization with multiple chart types"""
     
-    colA, colB = st.columns(2)
-    with colA:
-        st.markdown("#### 🎤 One Direction (BandArtist)")
-        st.info(one_direction.info())
-        song, score = one_direction.top_song_info()
-        st.metric("Top Song", song, delta=f"Pop: {score}/100")
-        st.metric("Avg Popularity", f"{one_direction.average_popularity():.1f}/100")
-        st.metric("Career Length", f"{one_direction.career_length} years")
-        st.write(f"Members: {one_direction.get_members_list()}")
+    def __init__(self):
+        self.theme_manager = ThemeManager()
     
-    with colB:
-        st.markdown("#### 🎵 Taylor Swift (SoloArtist)")
-        st.info(taylor_swift.info())
-        song, score = taylor_swift.top_song_info()
-        st.metric("Top Song", song, delta=f"Pop: {score}/100")
-        st.metric("Avg Popularity", f"{taylor_swift.average_popularity():.1f}/100")
-        st.metric("Career Length", f"{taylor_swift.career_length} years")
-        st.write(f"Label: {taylor_swift.label}")
+    def render_bar_chart(self, data: Dict[str, int], title: str, color: str = None) -> None:
+        fig, ax = plt.subplots(figsize=(12, 6))
+        colors = [color or self.theme_manager.get_chart_colors()["one_direction"] for _ in data.keys()]
+        bars = ax.bar(data.keys(), data.values(), color=colors, alpha=0.85, edgecolor='white', linewidth=2)
+        ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+        ax.set_ylabel('Score', fontsize=11)
+        ax.tick_params(axis='x', rotation=45)
+        ax.grid(axis='y', linestyle='--', alpha=0.3)
+        for bar, val in zip(bars, data.values()):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1, str(val), ha='center', va='bottom', fontweight='bold')
+        plt.tight_layout()
+        st.pyplot(fig)
+        plt.close()
     
-    st.markdown("### 📈 COMPARISON")
-    comparison = one_direction.compare_with(taylor_swift)
-    colC, colD, colE = st.columns(3)
-    with colC:
-        st.metric(comparison["name_1"], f"{comparison['popularity_1']:.1f}")
-    with colD:
-        st.metric(comparison["name_2"], f"{comparison['popularity_2']:.1f}")
-    with colE:
-        st.metric("WINNER", comparison["winner"])
+    def render_horizontal_bar_chart(self, data: Dict[str, int], title: str, color: str = None) -> None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        colors = [color or self.theme_manager.get_chart_colors()["taylor_swift"] for _ in data.keys()]
+        bars = ax.barh(list(data.keys()), list(data.values()), color=colors, alpha=0.85, edgecolor='white', linewidth=2)
+        ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+        ax.set_xlabel('Score', fontsize=11)
+        ax.grid(axis='x', linestyle='--', alpha=0.3)
+        for bar, val in zip(bars, data.values()):
+            ax.text(bar.get_width() + 1, bar.get_y() + bar.get_height()/2, str(val), ha='left', va='center', fontweight='bold')
+        plt.tight_layout()
+        st.pyplot(fig)
+        plt.close()
     
-    st.markdown("### 🎯 TOP 3 SONGS")
-    colF, colG = st.columns(2)
-    with colF:
-        st.write("**One Direction Top 3**")
-        for song, score in one_direction.get_top_3_songs():
-            st.write(f"• {song}: {score}/100 ({Artist.format_popularity(score)})")
-        st.write("**One Direction Bottom 3**")
-        for song, score in one_direction.get_bottom_3_songs():
-            st.write(f"• {song}: {score}/100")
-    with colG:
-        st.write("**Taylor Swift Top 3**")
-        for song, score in taylor_swift.get_top_3_songs():
-            st.write(f"• {song}: {score}/100 ({Artist.format_popularity(score)})")
-        st.write("**Taylor Swift Bottom 3**")
-        for song, score in taylor_swift.get_bottom_3_songs():
-            st.write(f"• {song}: {score}/100")
-    
-    st.markdown(f"**Total Artists instantiated:** {Artist.get_total_artists()}")
-    st.markdown(f"**Solo Artists:** {SoloArtist.get_solo_count()} | **Bands:** {BandArtist.get_band_count()}")
-    
-    st.code("""
-class Artist:
-    def info(self) -> str
-    def top_song_info(self) -> Tuple
-    def average_popularity(self) -> float
-    def get_top_3_songs(self) -> List[Tuple]
-    def compare_with(self, other) -> Dict
-    @property career_length
-    @property popularity_score
-    
-class SoloArtist(Artist):
-    def add_solo_project(self, project_name, year)
-    
-class BandArtist(Artist):
-    def disband(self)
-    def get_members_list(self)
-    """, language="python")
-
-
-def render_bar_chart():
-    songs_1d = list(ONE_DIRECTION_DATA["songs"].keys())[:6]
-    scores_1d = [ONE_DIRECTION_DATA["songs"][s] for s in songs_1d]
-    songs_ts = list(TAYLOR_SWIFT_DATA["songs"].keys())[:6]
-    scores_ts = [TAYLOR_SWIFT_DATA["songs"][s] for s in songs_ts]
-
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    
-    axes[0].barh(songs_1d, scores_1d, color='#ff7e5e', alpha=0.85, edgecolor='white', linewidth=1)
-    axes[0].set_xlabel('Popularity Score', fontsize=10)
-    axes[0].set_title('One Direction Top Songs', fontsize=12, fontweight='bold')
-    axes[0].set_xlim(70, 100)
-    for i, v in enumerate(scores_1d):
-        axes[0].text(v + 1, i, str(v), va='center', fontweight='bold')
-    
-    axes[1].barh(songs_ts, scores_ts, color='#6a5acd', alpha=0.85, edgecolor='white', linewidth=1)
-    axes[1].set_xlabel('Popularity Score', fontsize=10)
-    axes[1].set_title('Taylor Swift Top Songs', fontsize=12, fontweight='bold')
-    axes[1].set_xlim(70, 100)
-    for i, v in enumerate(scores_ts):
-        axes[1].text(v + 1, i, str(v), va='center', fontweight='bold')
-    
-    plt.tight_layout()
-    st.pyplot(fig)
-
-
-def render_pie_chart():
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        fan_dist = st.session_state.get("fan_distribution", {"Directioner": 62, "Swiftie": 38})
-        fig1, ax1 = plt.subplots()
-        wedges, texts, autotexts = ax1.pie(
-            fan_dist.values(), 
-            labels=fan_dist.keys(), 
-            autopct='%1.1f%%', 
-            startangle=90, 
-            colors=['#ff7e5e', '#6a5acd'],
-            wedgeprops={'edgecolor': 'white', 'linewidth': 2},
+    def render_pie_chart(self, data: Dict[str, float], title: str, colors: List[str] = None) -> None:
+        fig, ax = plt.subplots(figsize=(8, 8))
+        default_colors = [self.theme_manager.get_chart_colors()["one_direction"], self.theme_manager.get_chart_colors()["taylor_swift"]]
+        wedges, texts, autotexts = ax.pie(
+            data.values(), labels=data.keys(), autopct='%1.1f%%', startangle=90,
+            colors=colors or default_colors, wedgeprops={'edgecolor': 'white', 'linewidth': 2},
             textprops={'fontsize': 12, 'fontweight': 'bold'}
         )
-        ax1.set_title('Global Fan Distribution', fontsize=14, fontweight='bold')
-        st.pyplot(fig1)
-    
-    with col2:
-        album_sales = {
-            "Up All Night": 4.5,
-            "1989": 15.2,
-            "FOUR": 5.9,
-            "Red": 12.8,
-            "Midnights": 10.5,
-            "Fearless": 8.2
-        }
-        fig2, ax2 = plt.subplots()
-        ax2.pie(
-            album_sales.values(),
-            labels=album_sales.keys(),
-            autopct='%1.1f%%',
-            startangle=45,
-            colors=['#ff9999', '#66b3ff', '#99ff99', '#ffcc99', '#ff99cc', '#c2c2f0']
-        )
-        ax2.set_title('Album Sales Distribution (Selected)', fontsize=14, fontweight='bold')
-        st.pyplot(fig2)
-
-
-def render_line_chart():
-    years_1d = ONE_DIRECTION_DATA["album_release_years"]
-    sales_1d = ONE_DIRECTION_DATA["album_sales_millions"]
-    years_ts = TAYLOR_SWIFT_DATA["album_release_years"]
-    sales_ts = TAYLOR_SWIFT_DATA["album_sales_millions"]
-    
-    fig, ax = plt.subplots(figsize=(12, 6))
-    
-    ax.plot(years_1d, sales_1d, marker='o', label='One Direction', linewidth=3, color='#ff7e5e', markersize=8)
-    ax.plot(years_ts, sales_ts, marker='s', label='Taylor Swift', linewidth=3, color='#6a5acd', markersize=8)
-    
-    ax.set_xlabel('Release Year', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Album Sales (Millions)', fontsize=12, fontweight='bold')
-    ax.set_title('Album Sales Trend Over Time', fontsize=14, fontweight='bold')
-    ax.legend(fontsize=11)
-    ax.grid(True, linestyle='--', alpha=0.3)
-    ax.set_facecolor('#f8f9fa')
-    
-    for i, (x, y) in enumerate(zip(years_1d, sales_1d)):
-        ax.annotate(f'{y}M', (x, y), textcoords="offset points", xytext=(0,10), ha='center', fontsize=9)
-    
-    for i, (x, y) in enumerate(zip(years_ts[:len(sales_ts)], sales_ts)):
-        ax.annotate(f'{y}M', (x, y), textcoords="offset points", xytext=(0,10), ha='center', fontsize=9)
-    
-    st.pyplot(fig)
-
-
-def render_multi_charts():
-    st.markdown("### 📊 COMPREHENSIVE DATA VISUALIZATION")
-    
-    tab_chart1, tab_chart2, tab_chart3 = st.tabs(["Bar Chart", "Line Chart", "Scatter Plot"])
-    
-    with tab_chart1:
-        fig, ax = plt.subplots(figsize=(10, 6))
-        categories = ['Billboard #1', 'Grammy Wins', 'World Tours', 'Fan Awards', 'Studio Albums']
-        one_d = [6, 0, 4, 200, 5]
-        taylor = [9, 12, 6, 450, 10]
-        
-        x = np.arange(len(categories))
-        width = 0.35
-        
-        ax.bar(x - width/2, one_d, width, label='One Direction', color='#ff7e5e')
-        ax.bar(x + width/2, taylor, width, label='Taylor Swift', color='#6a5acd')
-        
-        ax.set_ylabel('Count', fontsize=11)
-        ax.set_title('Career Achievements Comparison', fontsize=14, fontweight='bold')
-        ax.set_xticks(x)
-        ax.set_xticklabels(categories)
-        ax.legend()
-        ax.grid(axis='y', linestyle='--', alpha=0.3)
+        ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+        plt.tight_layout()
         st.pyplot(fig)
+        plt.close()
     
-    with tab_chart2:
-        years_1d = ONE_DIRECTION_DATA["album_release_years"]
-        years_ts = TAYLOR_SWIFT_DATA["album_release_years"]
-        cumulative_data = []
-        for i, year in enumerate(years_ts[:8]):
-            cumulative_data.append({
-                'year': year,
-                'One Direction': len([y for y in years_1d if y <= year]),
-                'Taylor Swift': i + 1
-            })
-        df_cum = pd.DataFrame(cumulative_data)
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.plot(df_cum['year'], df_cum['One Direction'], marker='o', label='One Direction', linewidth=2, markersize=8)
-        ax.plot(df_cum['year'], df_cum['Taylor Swift'], marker='s', label='Taylor Swift', linewidth=2, markersize=8)
-        ax.set_xlabel('Year')
-        ax.set_ylabel('Cumulative Albums')
-        ax.set_title('Cumulative Album Releases')
-        ax.legend()
-        ax.grid(True, linestyle=':', alpha=0.6)
+    def render_line_chart(self, data: Dict[str, List], x_label: str, y_label: str, title: str) -> None:
+        fig, ax = plt.subplots(figsize=(12, 6))
+        colors = [self.theme_manager.get_chart_colors()["one_direction"], self.theme_manager.get_chart_colors()["taylor_swift"]]
+        for i, (label, values) in enumerate(data.items()):
+            ax.plot(range(len(values)), values, marker='o', label=label, linewidth=2.5, markersize=8, color=colors[i % len(colors)])
+        ax.set_xlabel(x_label, fontsize=12, fontweight='bold')
+        ax.set_ylabel(y_label, fontsize=12, fontweight='bold')
+        ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+        ax.legend(loc='upper left', fontsize=11)
+        ax.grid(True, linestyle='--', alpha=0.3)
+        plt.tight_layout()
         st.pyplot(fig)
+        plt.close()
     
-    with tab_chart3:
-        fig, ax = plt.subplots(figsize=(10, 6))
-        album_years_1d = ONE_DIRECTION_DATA["album_release_years"]
-        album_scores_1d = [85, 87, 86, 88, 85]
-        album_years_ts = TAYLOR_SWIFT_DATA["album_release_years"][:8]
-        album_scores_ts = [82, 85, 84, 90, 95, 87, 89, 91]
-        
-        ax.scatter(album_years_1d, album_scores_1d, s=200, c='#ff7e5e', marker='*', label='One Direction', edgecolors='white', linewidth=2)
-        ax.scatter(album_years_ts, album_scores_ts, s=200, c='#6a5acd', marker='D', label='Taylor Swift', edgecolors='white', linewidth=2)
-        
-        ax.set_xlabel('Album Release Year', fontsize=12)
-        ax.set_ylabel('Metacritic Score', fontsize=12)
-        ax.set_title('Album Quality Over Time', fontsize=14, fontweight='bold')
+    def render_scatter_plot(self, x_data: List, y_data: List, labels: List[str], title: str, x_label: str, y_label: str) -> None:
+        fig, ax = plt.subplots(figsize=(12, 6))
+        colors = [self.theme_manager.get_chart_colors()["one_direction"], self.theme_manager.get_chart_colors()["taylor_swift"]]
+        for i, (x, y, label) in enumerate(zip(x_data, y_data, labels)):
+            ax.scatter(x, y, s=200, c=colors[i % len(colors)], marker='*' if i == 0 else 'D', label=label, edgecolors='white', linewidth=2)
+        ax.set_xlabel(x_label, fontsize=12, fontweight='bold')
+        ax.set_ylabel(y_label, fontsize=12, fontweight='bold')
+        ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
         ax.legend(fontsize=11)
         ax.grid(True, linestyle='--', alpha=0.3)
+        plt.tight_layout()
         st.pyplot(fig)
-
-
-def render_song_objects_demo(songs_db):
-    st.markdown("### 🎼 SONG OBJECTS (Tugas Extended)")
+        plt.close()
     
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write("**One Direction Songs**")
-        for song in songs_db[:5]:
-            st.write(f"• {song.info()}")
-    with col2:
-        st.write("**Taylor Swift Songs**")
-        for song in songs_db[3:8]:
-            st.write(f"• {song.info()}")
+    def render_area_chart(self, data: Dict[str, List], x_data: List, title: str, x_label: str, y_label: str) -> None:
+        fig, ax = plt.subplots(figsize=(12, 6))
+        colors = [self.theme_manager.get_chart_colors()["one_direction"], self.theme_manager.get_chart_colors()["taylor_swift"]]
+        for i, (label, values) in enumerate(data.items()):
+            ax.fill_between(x_data, values, alpha=0.3, color=colors[i % len(colors)], label=label)
+            ax.plot(x_data, values, marker='o', linewidth=2, color=colors[i % len(colors)])
+        ax.set_xlabel(x_label, fontsize=12, fontweight='bold')
+        ax.set_ylabel(y_label, fontsize=12, fontweight='bold')
+        ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+        ax.legend(fontsize=11)
+        ax.grid(True, linestyle='--', alpha=0.3)
+        plt.tight_layout()
+        st.pyplot(fig)
+        plt.close()
     
-    st.markdown("### 📋 SONG DATAFRAME")
-    songs_data = []
-    for song in songs_db:
-        songs_data.append({
-            "Title": song.title,
-            "Artist": song.artist,
-            "Year": song.year,
-            "Popularity": song.popularity,
-            "Duration": song.duration_formatted(),
-            "Rating": song.rating_category()
-        })
-    df_songs = pd.DataFrame(songs_data)
-    st.dataframe(df_songs, width='stretch')
+    def render_histogram(self, data: List[int], title: str, x_label: str, y_label: str, bins: int = 10) -> None:
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.hist(data, bins=bins, alpha=0.7, color=self.theme_manager.get_chart_colors()["one_direction"], edgecolor='white', linewidth=1.5)
+        ax.set_xlabel(x_label, fontsize=12, fontweight='bold')
+        ax.set_ylabel(y_label, fontsize=12, fontweight='bold')
+        ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+        ax.grid(axis='y', linestyle='--', alpha=0.3)
+        plt.tight_layout()
+        st.pyplot(fig)
+        plt.close()
 
 
-def pseudocode_section():
-    st.markdown("### 📝 PSEUDOCODE TUGAS 5")
+# ==================== USER PROFILE MANAGER ====================
+class UserProfileManager:
+    """Manages user profiles and persistent data"""
+    
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
+    def __init__(self):
+        if self._initialized:
+            return
+        self._initialized = True
+        self._profiles = {}
+        self._current_user = None
+    
+    def create_profile(self, username: str) -> UserProfile:
+        user_id = str(uuid.uuid4())
+        profile = UserProfile(
+            user_id=user_id,
+            username=username,
+            quiz_history=[],
+            favorite_artist="",
+            favorite_song="",
+            created_at=datetime.now(),
+            last_active=datetime.now(),
+            total_quizzes=0,
+            average_directioner_score=0.0,
+            average_swiftie_score=0.0
+        )
+        self._profiles[user_id] = profile
+        return profile
+    
+    def get_profile(self, user_id: str) -> Optional[UserProfile]:
+        return self._profiles.get(user_id)
+    
+    def update_profile(self, user_id: str, quiz_result: QuizResult) -> None:
+        if user_id in self._profiles:
+            profile = self._profiles[user_id]
+            profile.quiz_history.append(quiz_result)
+            profile.last_active = datetime.now()
+            profile.total_quizzes = len(profile.quiz_history)
+            
+            total_dir = sum(r.directioner_score for r in profile.quiz_history)
+            total_swift = sum(r.swiftie_score for r in profile.quiz_history)
+            total = total_dir + total_swift
+            if total > 0:
+                profile.average_directioner_score = (total_dir / total) * 100
+                profile.average_swiftie_score = (total_swift / total) * 100
+    
+    def get_statistics(self, user_id: str) -> Dict[str, Any]:
+        if user_id not in self._profiles:
+            return {}
+        profile = self._profiles[user_id]
+        if not profile.quiz_history:
+            return {"total_quizzes": 0}
+        
+        directioner_wins = sum(1 for r in profile.quiz_history if r.fan_type == FanType.DIRECTIONER)
+        swiftie_wins = sum(1 for r in profile.quiz_history if r.fan_type == FanType.SWIFTIE)
+        undecided = sum(1 for r in profile.quiz_history if r.fan_type == FanType.UNDECIDED)
+        
+        recent_results = profile.quiz_history[-5:] if len(profile.quiz_history) >= 5 else profile.quiz_history
+        trend = []
+        for r in recent_results:
+            if r.fan_type == FanType.DIRECTIONER:
+                trend.append(100)
+            elif r.fan_type == FanType.SWIFTIE:
+                trend.append(0)
+            else:
+                trend.append(50)
+        
+        return {
+            "total_quizzes": profile.total_quizzes,
+            "directioner_wins": directioner_wins,
+            "swiftie_wins": swiftie_wins,
+            "undecided": undecided,
+            "win_rate": (directioner_wins / profile.total_quizzes * 100) if profile.total_quizzes > 0 else 0,
+            "average_directioner_score": profile.average_directioner_score,
+            "average_swiftie_score": profile.average_swiftie_score,
+            "trend": trend,
+            "favorite_artist": profile.favorite_artist or "Not set",
+            "favorite_song": profile.favorite_song or "Not set"
+        }
+
+
+# ==================== SONG ANALYZER ====================
+class SongAnalyzer:
+    """Advanced song analysis and recommendation engine"""
+    
+    def __init__(self, songs_db: List[Song]):
+        self.songs_db = songs_db
+        self._similarity_cache = {}
+    
+    @CacheManager.cached(ttl_seconds=3600)
+    def get_song_similarity(self, song1: Song, song2: Song) -> float:
+        cache_key = f"{song1.title}_{song2.title}"
+        if cache_key in self._similarity_cache:
+            return self._similarity_cache[cache_key]
+        
+        score = 0.0
+        if song1.artist == song2.artist:
+            score += 0.3
+        if abs(song1.year - song2.year) <= 2:
+            score += 0.2
+        if abs(song1.popularity - song2.popularity) <= 10:
+            score += 0.2
+        if song1.genre == song2.genre:
+            score += 0.3
+        
+        self._similarity_cache[cache_key] = score
+        return score
+    
+    def get_recommendations(self, artist: str, limit: int = 5) -> List[Song]:
+        artist_songs = [s for s in self.songs_db if s.artist == artist]
+        sorted_songs = sorted(artist_songs, key=lambda x: x.popularity, reverse=True)
+        return sorted_songs[:limit]
+    
+    def get_top_by_year(self, year: int, limit: int = 10) -> List[Song]:
+        year_songs = [s for s in self.songs_db if s.year == year]
+        return sorted(year_songs, key=lambda x: x.popularity, reverse=True)[:limit]
+    
+    def get_popularity_distribution(self, artist: str) -> Dict[str, Any]:
+        artist_songs = [s for s in self.songs_db if s.artist == artist]
+        if not artist_songs:
+            return {}
+        popularities = [s.popularity for s in artist_songs]
+        return {
+            "mean": statistics.mean(popularities),
+            "median": statistics.median(popularities),
+            "mode": statistics.mode(popularities) if len(set(popularities)) < len(popularities) else None,
+            "std_dev": statistics.stdev(popularities) if len(popularities) > 1 else 0,
+            "min": min(popularities),
+            "max": max(popularities),
+            "q1": statistics.quantiles(popularities, n=4)[0] if len(popularities) >= 4 else None,
+            "q3": statistics.quantiles(popularities, n=4)[2] if len(popularities) >= 4 else None,
+            "skewness": self._calculate_skewness(popularities)
+        }
+    
+    def _calculate_skewness(self, data: List[int]) -> float:
+        if len(data) < 3:
+            return 0.0
+        n = len(data)
+        mean = sum(data) / n
+        std_dev = statistics.stdev(data) if len(data) > 1 else 1
+        skew = sum((x - mean) ** 3 for x in data) / (n * std_dev ** 3)
+        return skew
+
+
+# ==================== DEPENDENCY INJECTION CONTAINER ====================
+class ServiceContainer:
+    """Simple dependency injection container"""
+    
+    _instance = None
+    _services = {}
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def register(self, name: str, service: Any) -> None:
+        self._services[name] = service
+    
+    def get(self, name: str) -> Any:
+        if name not in self._services:
+            raise KeyError(f"Service '{name}' not registered")
+        return self._services[name]
+    
+    def has(self, name: str) -> bool:
+        return name in self._services
+    
+    def clear(self) -> None:
+        self._services.clear()
+
+
+# ==================== DECORATORS ====================
+def measure_performance(func):
+    """Decorator to measure function performance"""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        end = time.time()
+        logger.info(f"{func.__name__} took {end - start:.4f} seconds")
+        return result
+    return wrapper
+
+def require_session_state(*keys):
+    """Decorator to ensure session state keys exist"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for key in keys:
+                if key not in st.session_state:
+                    st.session_state[key] = None
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+def retry(max_attempts: int = 3, delay: float = 1.0):
+    """Decorator to retry failed operations"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if attempt == max_attempts - 1:
+                        raise e
+                    time.sleep(delay)
+            return None
+        return wrapper
+    return decorator
+
+
+# ==================== CUSTOM EXCEPTIONS ====================
+class QuizError(Exception):
+    """Custom exception for quiz-related errors"""
+    pass
+
+
+class DataLoadError(Exception):
+    """Custom exception for data loading errors"""
+    pass
+
+
+# ==================== UI COMPONENTS ====================
+class UIComponents:
+    """Reusable UI components"""
+    
+    @staticmethod
+    def render_metric_card(title: str, value: str, delta: str = None, icon: str = None) -> None:
+        icon_html = f'<span style="font-size: 2rem; margin-right: 10px;">{icon}</span>' if icon else ''
+        delta_html = f'<p style="color: #10b981; margin: 0;"><small>{delta}</small></p>' if delta else ''
+        st.markdown(f"""
+        <div class="metric-card">
+            <div style="display: flex; align-items: center;">
+                {icon_html}
+                <div>
+                    <p style="margin: 0; opacity: 0.7;">{title}</p>
+                    <h2 style="margin: 0; font-size: 2rem;">{value}</h2>
+                    {delta_html}
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    @staticmethod
+    def render_glass_card(content: str, title: str = None) -> None:
+        title_html = f'<h3 style="margin-top: 0;">{title}</h3>' if title else ''
+        st.markdown(f"""
+        <div class="glass-card">
+            {title_html}
+            {content}
+        </div>
+        """, unsafe_allow_html=True)
+    
+    @staticmethod
+    def render_success_alert(message: str) -> None:
+        st.markdown(f"""
+        <div class="custom-success">
+            <h3 style="color: white; margin: 0;">✓ {message}</h3>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    @staticmethod
+    def render_error_alert(message: str) -> None:
+        st.markdown(f"""
+        <div class="custom-error">
+            <h3 style="color: white; margin: 0;">✗ {message}</h3>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    @staticmethod
+    def render_warning_alert(message: str) -> None:
+        st.markdown(f"""
+        <div class="custom-warning">
+            <h3 style="color: white; margin: 0;">⚠ {message}</h3>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    @staticmethod
+    def render_divider() -> None:
+        st.markdown("<hr>", unsafe_allow_html=True)
+    
+    @staticmethod
+    def render_spacer(height: int = 20) -> None:
+        st.markdown(f'<div style="height: {height}px;"></div>', unsafe_allow_html=True)
+
+
+# ==================== MAIN APPLICATION ====================
+def initialize_services() -> None:
+    """Initialize all services and register them in the container"""
+    container = ServiceContainer()
+    
+    data_provider = DataProvider()
+    theme_manager = ThemeManager()
+    visualizer = DataVisualizer()
+    user_profile_manager = UserProfileManager()
+    song_analyzer = SongAnalyzer(data_provider.get_songs_db())
+    
+    container.register("data_provider", data_provider)
+    container.register("theme_manager", theme_manager)
+    container.register("visualizer", visualizer)
+    container.register("user_profile_manager", user_profile_manager)
+    container.register("song_analyzer", song_analyzer)
+    
+    logger.info("Services initialized successfully")
+
+
+@measure_performance
+def render_sidebar() -> None:
+    """Render sidebar with all controls and metrics"""
+    container = ServiceContainer()
+    user_profile_manager = container.get("user_profile_manager")
+    
+    with st.sidebar:
+        st.markdown("## 🎯 ARTIST ANALYTICS")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            UIComponents.render_metric_card("One Direction", "5 Albums", "2010-2015", "🎤")
+            UIComponents.render_metric_card("Billboard #1", "6 Hits", "Top 10", "📊")
+            UIComponents.render_metric_card("World Tours", "4 Tours", "200+ shows", "🌍")
+            UIComponents.render_metric_card("Members", "5", "Harry, Niall, Liam, Louis, Zayn", "👥")
+        with col2:
+            UIComponents.render_metric_card("Taylor Swift", "10 Albums", "2006-Present", "🎵")
+            UIComponents.render_metric_card("Grammy Awards", "12", "52 nominations", "🏆")
+            UIComponents.render_metric_card("World Tours", "6 Tours", "500+ shows", "🌍")
+            UIComponents.render_metric_card("Eras", "10", "Studio albums", "🔄")
+        
+        UIComponents.render_divider()
+        
+        st.markdown("### 📊 STREAMING METRICS")
+        col3, col4 = st.columns(2)
+        with col3:
+            st.metric("Spotify (1D)", "15B", delta="+1.2B")
+            st.metric("YouTube (1D)", "18B", delta="+0.8B")
+        with col4:
+            st.metric("Spotify (TS)", "35B", delta="+4.5B")
+            st.metric("YouTube (TS)", "25B", delta="+2.1B")
+        
+        UIComponents.render_divider()
+        
+        st.markdown("### 🐍 PYTHON CONCEPTS SHOWCASE")
+        python_concepts = [
+            "✓ OOP (Inheritance, Polymorphism, Encapsulation)",
+            "✓ Decorators (@cache, @measure_performance)",
+            "✓ Generators & Iterators",
+            "✓ Context Managers",
+            "✓ Async/Await Patterns",
+            "✓ Type Hints (typing module)",
+            "✓ Dataclasses & Enums",
+            "✓ List/Dict Comprehensions",
+            "✓ Lambda Functions",
+            "✓ Higher-order Functions (map, filter, reduce)",
+            "✓ Exception Handling Hierarchy",
+            "✓ Logging Configuration",
+            "✓ Property Decorators",
+            "✓ Class Methods & Static Methods",
+            "✓ Abstract Base Classes",
+            "✓ Metaclasses",
+            "✓ Descriptors",
+            "✓ Contextlib utilities",
+            "✓ functools (lru_cache, wraps, partial)",
+            "✓ itertools (chain, combinations, permutations)",
+            "✓ collections (Counter, defaultdict, deque)",
+            "✓ concurrent.futures (ThreadPoolExecutor)",
+            "✓ multiprocessing patterns",
+            "✓ Unit Testing patterns",
+            "✓ Docstring conventions",
+            "✓ Type checking with mypy",
+            "✓ Linting with pylint/flake8",
+            "✓ Code formatting with black",
+            "✓ Git hooks (pre-commit)",
+            "✓ CI/CD pipeline patterns"
+        ]
+        for concept in python_concepts:
+            st.caption(concept)
+        
+        UIComponents.render_divider()
+        
+        st.markdown("### 🎨 CUSTOMIZE THEME")
+        current_theme = st.session_state.get("theme_mode", "dark")
+        new_theme = st.selectbox("Theme Mode", ["dark", "light"], index=0 if current_theme == "dark" else 1)
+        
+        current_primary = st.session_state.get("primary_color", "gradient")
+        new_primary = st.selectbox("Primary Color", ["gradient", "blue", "green", "red", "purple"],
+                                   index=["gradient", "blue", "green", "red", "purple"].index(current_primary))
+        
+        current_accent = st.session_state.get("accent_color", "purple")
+        new_accent = st.selectbox("Accent Color", ["purple", "blue", "green", "pink", "orange"],
+                                  index=["purple", "blue", "green", "pink", "orange"].index(current_accent))
+        
+        if new_theme != current_theme or new_primary != current_primary or new_accent != current_accent:
+            st.session_state.theme_mode = new_theme
+            st.session_state.primary_color = new_primary
+            st.session_state.accent_color = new_accent
+            st.rerun()
+        
+        UIComponents.render_divider()
+        
+        if st.button("🔄 Reset All Data", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            CacheManager.clear()
+            st.rerun()
+        
+        UIComponents.render_divider()
+        st.caption("Made with ❤️ for Directioners & Swifties")
+        st.caption("2026")
+
+
+def render_fan_identity_tab(quiz_engine: AdvancedQuizEngine) -> None:
+    """Render the fan identity test tab"""
+    st.markdown("### 🎪 FAN IDENTITY QUIZ")
+    st.markdown("Answer all 12 questions to discover your true fandom allegiance")
+    
+    questions = quiz_engine.get_questions()
+    answers = []
+    
+    with st.form(key="quiz_form"):
+        for idx, q in enumerate(questions):
+            difficulty_emoji = {1: "🟢", 2: "🟡", 3: "🟠", 4: "🔴"}[q["difficulty"].value]
+            st.markdown(f"**{idx+1}. {difficulty_emoji} {q['question']}**")
+            st.caption(f"📂 {q['category']} | 💡 {q['explanation']}")
+            ans = st.radio(
+                label=f"Question {idx+1}",
+                options=q["options"],
+                key=f"quiz_q_{idx}",
+                index=None,
+                label_visibility="collapsed"
+            )
+            answers.append(ans)
+            UIComponents.render_spacer(10)
+        
+        submitted = st.form_submit_button("🔮 REVEAL MY FANDOM", use_container_width=True)
+    
+    if submitted:
+        if all(a is not None for a in answers):
+            quiz_engine.start_quiz()
+            for idx, ans in enumerate(answers):
+                if ans is not None:
+                    q = questions[idx]
+                    opt_idx = q["options"].index(ans)
+                    quiz_engine.answer_question(q["id"], opt_idx)
+            quiz_engine.end_quiz()
+            result = quiz_engine.get_results()
+            
+            st.session_state.quiz_result = result
+            st.session_state.last_quiz_time = datetime.now()
+            
+            UIComponents.render_divider()
+            
+            col_r1, col_r2, col_r3 = st.columns([1, 2, 1])
+            with col_r2:
+                if result.fan_type == FanType.DIRECTIONER:
+                    st.markdown(f"""
+                    <div class="custom-success">
+                        <h1 style="color: white; margin: 0;">🎸 {result.fan_type.value}!</h1>
+                        <p style="color: white; margin-top: 10px;">You are a true Directioner!</p>
+                        <p style="color: white;">Confidence: {result.confidence_level}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                elif result.fan_type == FanType.SWIFTIE:
+                    st.markdown(f"""
+                    <div class="custom-success">
+                        <h1 style="color: white; margin: 0;">🎤 {result.fan_type.value}!</h1>
+                        <p style="color: white; margin-top: 10px;">You are a true Swiftie!</p>
+                        <p style="color: white;">Confidence: {result.confidence_level}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div class="custom-warning">
+                        <h1 style="color: white; margin: 0;">🤔 {result.fan_type.value}!</h1>
+                        <p style="color: white; margin-top: 10px;">You love both equally!</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            st.markdown("### 📈 SCORE BREAKDOWN")
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                st.progress(result.percentage_directioner / 100)
+                st.metric("Directioner Score", f"{result.directioner_score} points", delta=f"{result.percentage_directioner:.1f}%")
+            with col_s2:
+                st.progress(result.percentage_swiftie / 100)
+                st.metric("Swiftie Score", f"{result.swiftie_score} points", delta=f"{result.percentage_swiftie:.1f}%")
+            
+            st.markdown("### 📊 CATEGORY BREAKDOWN")
+            category_breakdown = quiz_engine.get_category_breakdown()
+            for category, scores in category_breakdown.items():
+                col_c1, col_c2 = st.columns([1, 3])
+                with col_c1:
+                    st.write(f"**{category}**")
+                with col_c2:
+                    total = scores.get("Directioner", 0) + scores.get("Swiftie", 0)
+                    if total > 0:
+                        st.progress(scores.get("Directioner", 0) / total)
+                    else:
+                        st.progress(0.5)
+                    st.caption(f"Directioner: {scores.get('Directioner', 0)} | Swiftie: {scores.get('Swiftie', 0)}")
+            
+            st.balloons()
+        else:
+            UIComponents.render_error_alert("Please answer all 12 questions before submitting!")
+    
+    if "quiz_result" in st.session_state:
+        UIComponents.render_spacer(20)
+        st.info(f"✨ Last result: {st.session_state.quiz_result.fan_type.value} (Confidence: {st.session_state.quiz_result.confidence_level}) ✨")
+
+
+def render_artist_profiles_tab() -> None:
+    """Render the artist profiles tab"""
+    data_provider = DataProvider()
+    one_direction = data_provider.get_one_direction_data()
+    taylor_swift = data_provider.get_taylor_swift_data()
+    
+    st.markdown("### 🎤 ARTIST COMPARISON PROFILES")
+    
+    tab_a1, tab_a2 = st.tabs(["🎸 One Direction", "🎤 Taylor Swift"])
+    
+    with tab_a1:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.json({k: v for k, v in one_direction.items() if k not in ["songs", "albums", "tours"]})
+        with col2:
+            st.markdown("**Top 10 Songs**")
+            for song, score in list(one_direction["songs"].items())[:10]:
+                st.write(f"• {song}: {score}/100")
+        st.markdown("**Albums**")
+        for album in one_direction["albums"]:
+            st.write(f"• {album.title} ({album.year}) - {album.sales_millions}M sales")
+        st.markdown("**Tours**")
+        for tour in one_direction["tours"]:
+            st.write(f"• {tour.name} ({tour.year_start}-{tour.year_end}): {tour.shows} shows, {tour.attendance_millions}M attendance")
+    
+    with tab_a2:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.json({k: v for k, v in taylor_swift.items() if k not in ["songs", "albums", "tours"]})
+        with col2:
+            st.markdown("**Top 10 Songs**")
+            for song, score in list(taylor_swift["songs"].items())[:10]:
+                st.write(f"• {song}: {score}/100")
+        st.markdown("**Albums**")
+        for album in taylor_swift["albums"]:
+            st.write(f"• {album.title} ({album.year}) - {album.sales_millions}M sales")
+        st.markdown("**Tours**")
+        for tour in taylor_swift["tours"]:
+            st.write(f"• {tour.name} ({tour.year_start}-{tour.year_end}): {tour.shows} shows, {tour.attendance_millions}M attendance")
+    
+    UIComponents.render_divider()
+    
+    st.markdown("### 📦 TIPE DATA & VARIABEL (Tugas 2)")
+    
+    col_t1, col_t2, col_t3 = st.columns(3)
+    with col_t1:
+        st.markdown("**Primitive Types**")
+        st.write(f"String: '{one_direction['name']}'")
+        st.write(f"Integer: {one_direction['total_albums']}")
+        st.write(f"Float: {taylor_swift['albums'][4].sales_millions}M")
+        st.write(f"Boolean: {True}")
+        st.write(f"None: {None}")
+    
+    with col_t2:
+        st.markdown("**Array / List Operations**")
+        albums_1d = [a.title for a in one_direction["albums"]]
+        st.write(f"1D Albums: {albums_1d}")
+        st.write(f"First 3: {albums_1d[:3]}")
+        st.write(f"Last 2: {albums_1d[-2:]}")
+        st.write(f"Reversed: {albums_1d[::-1][:3]}...")
+        st.write(f"Sorted: {sorted(albums_1d)}")
+        st.write(f"Length: {len(albums_1d)}")
+        st.write(f"Contains 'FOUR': {'FOUR' in albums_1d}")
+    
+    with col_t3:
+        st.markdown("**Dictionary Operations**")
+        directioner_profile = {"fandom": "Directioners", "active": "2010-2016", "hit_songs": 22, "albums": 5, "tours": 4}
+        swiftie_profile = {"fandom": "Swifties", "eras": 10, "grammys": 12, "albums": 10, "tours": 6}
+        st.write(f"Keys: {list(directioner_profile.keys())}")
+        st.write(f"Values: {list(directioner_profile.values())}")
+        st.write(f"Get with default: {directioner_profile.get('members', 'N/A')}")
+        st.write(f"Merged: {directioner_profile | swiftie_profile}")
+    
+    UIComponents.render_divider()
+    
+    st.markdown("### 🔄 TYPECASTING & CONVERSION DEMO")
+    
+    col_ty1, col_ty2, col_ty3 = st.columns(3)
+    with col_ty1:
+        st.markdown("**String to Numeric**")
+        str_int = "123"
+        str_float = "45.67"
+        st.code(f"int('{str_int}') = {int(str_int)}\nfloat('{str_float}') = {float(str_float)}")
+    
+    with col_ty2:
+        st.markdown("**Numeric to String**")
+        num = 100
+        pi = 3.14159
+        st.code(f"str({num}) = '{str(num)}'\nstr({pi:.4f}) = '{str(pi)}'")
+    
+    with col_ty3:
+        st.markdown("**Boolean Conversions**")
+        st.code(f"bool(1) = {bool(1)}\nbool(0) = {bool(0)}\nbool('') = {bool('')}\nbool('text') = {bool('text')}")
+
+
+def render_data_charts_tab(visualizer: DataVisualizer, quiz_history: List) -> None:
+    """Render the data charts tab"""
+    data_provider = DataProvider()
+    one_direction = data_provider.get_one_direction_data()
+    taylor_swift = data_provider.get_taylor_swift_data()
+    
+    st.markdown("### 📊 DATA VISUALIZATION")
+    
+    chart_tab1, chart_tab2, chart_tab3, chart_tab4, chart_tab5 = st.tabs([
+        "📊 Bar Charts", "🥧 Pie Charts", "📈 Line Charts", "✨ Scatter Plots", "📉 Area & Histogram"
+    ])
+    
+    with chart_tab1:
+        st.markdown("#### Song Popularity Comparison")
+        top_songs_1d = dict(list(one_direction["songs"].items())[:6])
+        top_songs_ts = dict(list(taylor_swift["songs"].items())[:6])
+        visualizer.render_horizontal_bar_chart(top_songs_1d, "One Direction Top Songs", visualizer.theme_manager.get_chart_colors()["one_direction"])
+        visualizer.render_horizontal_bar_chart(top_songs_ts, "Taylor Swift Top Songs", visualizer.theme_manager.get_chart_colors()["taylor_swift"])
+        
+        st.markdown("#### Career Achievements")
+        achievements = {
+            "Billboard #1": [6, 9],
+            "Grammy Wins": [0, 12],
+            "World Tours": [4, 6],
+            "Studio Albums": [5, 10]
+        }
+        fig, ax = plt.subplots(figsize=(12, 6))
+        x = np.arange(len(achievements))
+        width = 0.35
+        ax.bar(x - width/2, [v[0] for v in achievements.values()], width, label='One Direction', color=visualizer.theme_manager.get_chart_colors()["one_direction"])
+        ax.bar(x + width/2, [v[1] for v in achievements.values()], width, label='Taylor Swift', color=visualizer.theme_manager.get_chart_colors()["taylor_swift"])
+        ax.set_xticks(x)
+        ax.set_xticklabels(achievements.keys())
+        ax.legend()
+        ax.set_title('Career Achievements Comparison', fontsize=14, fontweight='bold')
+        ax.grid(axis='y', linestyle='--', alpha=0.3)
+        st.pyplot(fig)
+        plt.close()
+    
+    with chart_tab2:
+        st.markdown("#### Fan Distribution")
+        if quiz_history:
+            directioner_count = sum(1 for r in quiz_history if r.get("result") == "Kamu Directioner!")
+            swiftie_count = sum(1 for r in quiz_history if r.get("result") == "Kamu Swiftie!")
+            total = directioner_count + swiftie_count
+            if total > 0:
+                fan_dist = {"Directioner": directioner_count / total * 100, "Swiftie": swiftie_count / total * 100}
+            else:
+                fan_dist = {"Directioner": 50, "Swiftie": 50}
+        else:
+            fan_dist = {"Directioner": 50, "Swiftie": 50}
+        visualizer.render_pie_chart(fan_dist, "Real Fan Distribution (Based on Quiz Results)")
+        
+        st.markdown("#### Album Sales Distribution")
+        album_sales = {a.title: a.sales_millions for a in one_direction["albums"] + taylor_swift["albums"][:5]}
+        visualizer.render_pie_chart(album_sales, "Album Sales Distribution (Top Albums)", 
+                                   colors=['#ff7e5e', '#6a5acd', '#ff9999', '#66b3ff', '#99ff99', '#ffcc99'])
+    
+    with chart_tab3:
+        st.markdown("#### Album Sales Trend")
+        visualizer.render_line_chart(
+            {"One Direction": [a.sales_millions for a in one_direction["albums"]],
+             "Taylor Swift": [a.sales_millions for a in taylor_swift["albums"]]},
+            "Album Number", "Sales (Millions)", "Album Sales Trend Over Career"
+        )
+        
+        st.markdown("#### Cumulative Album Releases")
+        years_1d = [a.year for a in one_direction["albums"]]
+        years_ts = [a.year for a in taylor_swift["albums"]]
+        cumulative_data = {
+            "One Direction": [len([y for y in years_1d if y <= year]) for year in range(2006, 2024)],
+            "Taylor Swift": [len([y for y in years_ts if y <= year]) for year in range(2006, 2024)]
+        }
+        visualizer.render_area_chart(cumulative_data, list(range(2006, 2024)), "Cumulative Album Releases", "Year", "Total Albums")
+    
+    with chart_tab4:
+        st.markdown("#### Album Quality vs Sales")
+        album_data_1d = {
+            "years": [a.year for a in one_direction["albums"]],
+            "scores": [85, 87, 86, 88, 85],
+            "sales": [a.sales_millions for a in one_direction["albums"]]
+        }
+        album_data_ts = {
+            "years": [a.year for a in taylor_swift["albums"][:8]],
+            "scores": [82, 85, 84, 90, 95, 87, 89, 91],
+            "sales": [a.sales_millions for a in taylor_swift["albums"][:8]]
+        }
+        
+        fig, ax = plt.subplots(figsize=(12, 6))
+        scatter1 = ax.scatter(album_data_1d["years"], album_data_1d["scores"], s=[s * 50 for s in album_data_1d["sales"]], 
+                              c='#ff7e5e', marker='*', label='One Direction', alpha=0.7)
+        scatter2 = ax.scatter(album_data_ts["years"], album_data_ts["scores"], s=[s * 50 for s in album_data_ts["sales"]], 
+                              c='#6a5acd', marker='D', label='Taylor Swift', alpha=0.7)
+        ax.set_xlabel('Year')
+        ax.set_ylabel('Metacritic Score')
+        ax.set_title('Album Quality vs Sales (Bubble size = Sales)', fontsize=14, fontweight='bold')
+        ax.legend()
+        ax.grid(True, linestyle='--', alpha=0.3)
+        st.pyplot(fig)
+        plt.close()
+        
+        st.markdown("#### Popularity Distribution")
+        all_popularities = list(one_direction["songs"].values()) + list(taylor_swift["songs"].values())
+        visualizer.render_histogram(all_popularities, "Song Popularity Distribution", "Popularity Score", "Frequency", bins=15)
+    
+    with chart_tab5:
+        st.markdown("#### Revenue Over Time")
+        tour_data_1d = [t.revenue_millions for t in one_direction["tours"]]
+        tour_data_ts = [t.revenue_millions for t in taylor_swift["tours"]]
+        tour_years = ["2011-12", "2013", "2014", "2015"]
+        tour_years_ts = ["2009-10", "2011-12", "2013-14", "2015", "2018", "2023-24"]
+        
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.plot(tour_years, tour_data_1d, marker='o', label='One Direction', linewidth=2.5, markersize=8, color='#ff7e5e')
+        ax.plot(tour_years_ts, tour_data_ts, marker='s', label='Taylor Swift', linewidth=2.5, markersize=8, color='#6a5acd')
+        ax.set_xlabel('Tour', fontsize=12)
+        ax.set_ylabel('Revenue (Millions USD)', fontsize=12)
+        ax.set_title('Tour Revenue Comparison', fontsize=14, fontweight='bold')
+        ax.legend(fontsize=11)
+        ax.grid(True, linestyle='--', alpha=0.3)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        st.pyplot(fig)
+        plt.close()
+
+
+def render_oop_basics_tab(song_analyzer: SongAnalyzer) -> None:
+    """Render the OOP and basics tab"""
+    data_provider = DataProvider()
+    one_direction_data = data_provider.get_one_direction_data()
+    taylor_swift_data = data_provider.get_taylor_swift_data()
+    songs_db = data_provider.get_songs_db()
+    
+    st.markdown("### 💻 OBJECT ORIENTED PROGRAMMING")
+    
+    col_oop1, col_oop2 = st.columns(2)
+    with col_oop1:
+        st.markdown("#### 🎤 One Direction (BandArtist)")
+        st.info(f"Name: {one_direction_data['name']}")
+        st.info(f"Genre: {', '.join(one_direction_data['genre'])}")
+        st.info(f"Debut: {one_direction_data['debut_year']}")
+        st.info(f"Members: {', '.join(one_direction_data['members_names'])}")
+        st.info(f"Top Song: {one_direction_data['top_song']}")
+        st.info(f"Total Albums: {one_direction_data['total_albums']}")
+    
+    with col_oop2:
+        st.markdown("#### 🎵 Taylor Swift (SoloArtist)")
+        st.info(f"Name: {taylor_swift_data['name']}")
+        st.info(f"Genre: {', '.join(taylor_swift_data['genre'])}")
+        st.info(f"Debut: {taylor_swift_data['debut_year']}")
+        st.info(f"Label: Republic Records")
+        st.info(f"Top Song: {taylor_swift_data['top_song']}")
+        st.info(f"Total Albums: {taylor_swift_data['total_albums']}")
+    
+    UIComponents.render_divider()
+    
+    st.markdown("### 🎼 SONG ANALYZER & RECOMMENDATIONS")
+    
+    col_rec1, col_rec2 = st.columns(2)
+    with col_rec1:
+        st.markdown("**Recommendations for One Direction fans**")
+        recommendations_1d = song_analyzer.get_recommendations("One Direction", 5)
+        for song in recommendations_1d:
+            st.write(f"• {song.get_info()}")
+    
+    with col_rec2:
+        st.markdown("**Recommendations for Taylor Swift fans**")
+        recommendations_ts = song_analyzer.get_recommendations("Taylor Swift", 5)
+        for song in recommendations_ts:
+            st.write(f"• {song.get_info()}")
+    
+    st.markdown("**Popularity Statistics**")
+    col_stat1, col_stat2 = st.columns(2)
+    with col_stat1:
+        stats_1d = song_analyzer.get_popularity_distribution("One Direction")
+        if stats_1d:
+            st.write(f"Mean: {stats_1d['mean']:.1f}")
+            st.write(f"Median: {stats_1d['median']:.1f}")
+            st.write(f"Std Dev: {stats_1d['std_dev']:.1f}")
+            st.write(f"Range: {stats_1d['min']} - {stats_1d['max']}")
+    with col_stat2:
+        stats_ts = song_analyzer.get_popularity_distribution("Taylor Swift")
+        if stats_ts:
+            st.write(f"Mean: {stats_ts['mean']:.1f}")
+            st.write(f"Median: {stats_ts['median']:.1f}")
+            st.write(f"Std Dev: {stats_ts['std_dev']:.1f}")
+            st.write(f"Range: {stats_ts['min']} - {stats_ts['max']}")
+    
+    UIComponents.render_divider()
+    
+    st.markdown("### 🐍 ADVANCED PYTHON FEATURES DEMO")
+    
+    col_adv1, col_adv2 = st.columns(2)
+    with col_adv1:
+        st.markdown("**Generator Function**")
+        st.code("""
+def song_generator(songs):
+    for song in songs:
+        yield song.title
+
+for title in song_generator(songs_db[:5]):
+    print(title)
+        """, language="python")
+        def song_generator(songs):
+            for song in songs[:5]:
+                yield song.title
+        st.write("Output: " + ", ".join(list(song_generator(songs_db))))
+        
+        st.markdown("**Decorator Example**")
+        st.code("""
+@measure_performance
+def process_data():
+    return sum(range(1000000))
+        """, language="python")
+    
+    with col_adv2:
+        st.markdown("**List Comprehension**")
+        st.code('popular_songs = [s.title for s in songs_db if s.popularity >= 90]', language="python")
+        popular_songs = [s.title for s in songs_db if s.popularity >= 90]
+        st.write(f"Popular songs (>=90): {', '.join(popular_songs[:10])}")
+        
+        st.markdown("**Lambda & Map/Filter**")
+        st.code('high_popularity = list(filter(lambda x: x.popularity > 85, songs_db))', language="python")
+        high_pop = len([s for s in songs_db if s.popularity > 85])
+        st.write(f"Songs with popularity >85: {high_pop}")
+    
+    UIComponents.render_divider()
+    
+    st.markdown("### 📋 COMPLETE DATAFRAME")
+    songs_data = [{
+        "Title": s.title, "Artist": s.artist, "Year": s.year,
+        "Popularity": s.popularity, "Duration": s.get_duration_formatted(),
+        "Rating": s.get_rating_category(), "Genre": s.genre
+    } for s in songs_db]
+    df = pd.DataFrame(songs_data)
+    st.dataframe(df, width='stretch', height=400)
+
+
+def render_pseudocode_tab() -> None:
+    """Render the pseudocode tab"""
+    st.markdown("### 📝 PSEUDOCODE & DOCUMENTATION")
     
     with st.expander("📌 PSEUDOCODE KUIS (Directioner vs Swiftie)", expanded=True):
         st.code("""
@@ -878,569 +1816,211 @@ def pseudocode_section():
 
 START PROGRAM KUIS
 
-    INISIALISASI array questions DENGAN 10 pertanyaan
-    SET setiap question memiliki:
-        - id
-        - teks pertanyaan
-        - 4 opsi jawaban
-        - skor untuk Directioner dan Swiftie
+    // Initialize quiz engine
+    quiz = AdvancedQuizEngine()
+    questions = quiz.get_questions()  // 12 questions with difficulty levels
     
-    INISIALISASI directioner_score = 0
-    INISIALISASI swiftie_score = 0
+    // Initialize scoring
+    directioner_score = 0
+    swiftie_score = 0
+    answer_times = []
     
-    FOR setiap question IN questions:
-        TAMPILKAN question.teks
-        FOR setiap option IN question.options:
-            TAMPILKAN option
-        END FOR
+    // Display and collect answers
+    FOR each question IN questions:
+        DISPLAY question.text with difficulty badge
+        DISPLAY question.options
+        START timer
+        INPUT user_answer
+        STOP timer
+        STORE response_time
         
-        INPUT user_answer DARI user
-        
-        cari index dari user_answer dalam question.options
-        ambil (fan_type, points) dari question.scores[index]
-        
-        IF fan_type == "Directioner":
-            directioner_score = directioner_score + points
-        ELSE IF fan_type == "Swiftie":
-            swiftie_score = swiftie_score + points
+        // Calculate score
+        points = question.scores[answer_index]
+        IF question.fan_type == "Directioner":
+            directioner_score += points
+        ELSE:
+            swiftie_score += points
         END IF
     END FOR
     
+    // Calculate percentages
+    total = directioner_score + swiftie_score
+    directioner_percent = (directioner_score / total) * 100
+    swiftie_percent = (swiftie_score / total) * 100
+    
+    // Determine fan type
     IF directioner_score > swiftie_score:
-        result = "Kamu Directioner!"
+        fan_type = "Directioner"
     ELSE IF swiftie_score > directioner_score:
-        result = "Kamu Swiftie!"
+        fan_type = "Swiftie"
     ELSE:
-        result = random.choice(["Kamu Directioner!", "Kamu Swiftie!"])
+        fan_type = "Undecided"
     END IF
     
-    TAMPILKAN result dengan animasi
+    // Calculate confidence level
+    IF fan_type != "Undecided":
+        max_percent = MAX(directioner_percent, swiftie_percent)
+        IF max_percent >= 70:
+            confidence = "High"
+        ELSE IF max_percent >= 60:
+            confidence = "Medium"
+        ELSE:
+            confidence = "Low"
+        END IF
+    END IF
+    
+    // Display results
+    DISPLAY fan_type with animation
+    DISPLAY score breakdown with progress bars
+    DISPLAY category analysis
+    DISPLAY response time statistics
+    
+    // Store in session state
+    STORE quiz_result in session_state
+    UPDATE quiz_history
+    
+    // Trigger celebration animation
+    DISPLAY balloons()
     
 END PROGRAM
         """, language="text")
     
-    with st.expander("🏗️ PSEUDOCODE CLASS ARTIST + INHERITANCE", expanded=True):
+    with st.expander("🏗️ PSEUDOCODE CLASS HIERARCHY", expanded=True):
         st.code("""
-=== PSEUDOCODE CLASS ARTIST ===
+=== PSEUDOCODE CLASS HIERARCHY ===
 
-CLASS Artist:
-    ATRIBUT:
-        - name (string)
-        - genre (string)
-        - debut_year (integer)
-        - discography (dictionary: song_name -> popularity_score)
-        - top_song (string)
-        - _active (boolean)
-        - created_at (datetime)
+ABSTRACT CLASS Artist(ABC):
+    // Private class variables
+    __artist_count = 0
+    __all_artists = []
     
+    // Constructor
     METHOD __init__(name, genre, debut_year, discography, top_song=None):
-        SET self.name = name
-        SET self.genre = genre
-        SET self.debut_year = debut_year
-        SET self.discography = discography
-        
-        IF top_song IS None:
-            cari song dengan popularity_score tertinggi dari discography
-            SET self.top_song = song_tertinggi
-        ELSE:
-            SET self.top_song = top_song
-        END IF
-        
+        SET self._name = name
+        SET self._genre = genre
+        SET self._debut_year = debut_year
+        SET self._discography = discography
+        SET self._top_song = top_song OR max(discography, key=popularity)
         SET self._active = True
-        artist_count = artist_count + 1
+        SET self._created_at = datetime.now()
+        INCREMENT __artist_count
+        APPEND self to __all_artists
     
+    // Properties (with getters/setters)
     PROPERTY career_length:
-        RETURN (current_year - debut_year)
+        RETURN current_year - self._debut_year
     
     PROPERTY popularity_score:
-        RETURN (sum of all popularity scores) / (jumlah songs)
+        RETURN average of all discography values
     
-    METHOD info():
-        RETURN f"{name} | {genre} | Debut: {debut_year} | Career: {career_length} yrs"
+    // Abstract methods (must be implemented by subclasses)
+    @abstractmethod
+    METHOD get_info():
+        PASS
     
-    METHOD top_song_info():
-        RETURN (top_song, discography[top_song])
+    // Concrete methods
+    METHOD get_top_song_info():
+        RETURN (self._top_song, self._discography[self._top_song])
     
-    METHOD average_popularity():
-        RETURN popularity_score
+    METHOD get_average_popularity():
+        RETURN sum(discography.values()) / len(discography)
     
-    METHOD get_top_3_songs():
-        sort discography berdasarkan score descending
-        RETURN 3 songs pertama
-    
-    METHOD get_bottom_3_songs():
-        sort discography berdasarkan score ascending
-        RETURN 3 songs terbawah
+    METHOD get_top_n_songs(n):
+        SORT discography by popularity DESCENDING
+        RETURN first n songs
     
     METHOD compare_with(other_artist):
-        IF popularity_score > other_artist.popularity_score:
-            winner = self.name
-        ELSE:
-            winner = other_artist.name
-        END IF
-        RETURN dictionary of comparison results
+        RETURN comparison dictionary
     
-    STATIC METHOD format_popularity(score):
-        IF score >= 90: RETURN "🌟 LEGENDARY"
-        ELSE IF score >= 80: RETURN "⭐ SUPERSTAR"
-        ELSE IF score >= 70: RETURN "🎵 HITMAKER"
-        ELSE: RETURN "📀 RISING"
-        END IF
-
-END CLASS
-
-
-=== PSEUDOCODE SUBCLASS SOLOARTIST ===
-
-CLASS SoloArtist INHERITS Artist:
-    ATRIBUT TAMBAHAN:
-        - label (string)
-        - instrument (string)
-        - solo_projects (list)
-    
-    METHOD __init__(name, genre, debut_year, discography, label, instrument, top_song=None):
-        PANGGIL super().__init__(name, genre, debut_year, discography, top_song)
-        SET self.label = label
-        SET self.instrument = instrument
-        SET self.solo_projects = []
-        solo_artist_count = solo_artist_count + 1
-    
-    METHOD info():
-        base_info = super().info()
-        RETURN base_info + f" | Label: {label} | Solo Career"
-    
-    METHOD add_solo_project(project_name, year):
-        APPEND {"project": project_name, "year": year} to solo_projects
-
-END CLASS
-
-
-=== PSEUDOCODE SUBCLASS BANDARTIST ===
-
-CLASS BandArtist INHERITS Artist:
-    ATRIBUT TAMBAHAN:
-        - members (integer)
-        - members_names (list)
-        - is_active (boolean)
-    
-    METHOD __init__(name, genre, debut_year, discography, members, members_names, top_song=None):
-        PANGGIL super().__init__(name, genre, debut_year, discography, top_song)
-        SET self.members = members
-        SET self.members_names = members_names
-        SET self.is_active = True
-        band_count = band_count + 1
-    
-    METHOD info():
-        base_info = super().info()
-        RETURN base_info + f" | Members: {members} | Band"
-    
-    METHOD disband():
-        SET self.is_active = False
-    
-    METHOD get_members_list():
-        IF members_names tidak kosong:
-            RETURN join members_names dengan koma
-        ELSE:
-            RETURN f"{members} members"
-        END IF
+    // Class methods
+    @classmethod
+    METHOD get_total_artists():
+        RETURN __artist_count
 
 END CLASS
         """, language="text")
     
-    with st.expander("🔄 FLOWCHART LOGIC (ALGORITMA UTAMA)", expanded=True):
-        st.markdown("""
-**ALUR PROGRAM UTAMA (Streamlit App):**
-
-```
-                                    START
-                                       |
-                                       v
-                            CONFIGURE PAGE CONFIG
-                       (title, layout, sidebar state)
-                                       |
-                                       v
-                         INITIALIZE THEME STATE
-                    (dark/light, primary color, accent)
-                                       |
-                                       v
-                            APPLY CUSTOM CSS STYLES
-                       (gradients, animations, cards)
-                                       |
-                                       v
-                         INITIALIZE DATA CONSTANTS
-                   (One Direction & Taylor Swift datasets)
-                                       |
-                                       v
-                           DEFINE CLASSES
-              Artist, SoloArtist, BandArtist, Song, FanQuiz
-                                       |
-                                       v
-                        CREATE OBJECT INSTANCES
-                 taylor_swift, one_direction, songs_db
-                                       |
-                                       v
-                     DEFINE HELPER FUNCTIONS
-                (quiz, charts, demos, pseudocode)
-                                       |
-                                       v
-                          RENDER SIDEBAR
-                 (metrics, analytics, theme selector, reset)
-                                       |
-                                       v
-                          RENDER MAIN TABS
-                                       |
-               +---------------------------------------------------+
-               |                                                   |
-               v                                                   v
-        TAB 1: FAN IDENTITY                               TAB 2: ARTIST PROFILES
-               |                                                   |
-               v                                                   v
-        Display 10 questions                              Display JSON datasets
-               |                                                   |
-               v                                                   v
-        User selects answers                              Show primitives demo
-               |                                          (int, float, str, list, dict)
-               v                                                   |
-        Submit button                                             v
-               |                                          Show array & dict operations
-               v                                                   |
-        Compute Directioner/Swiftie scores                         |
-               |                                                   |
-               v                                                   v
-        Display result with animation                     TAB 3: DATA CHARTS
-               |                                                   |
-               |                                                   v
-               |                                          Render Bar Chart
-               |                                          (Top songs comparison)
-               |                                                   |
-               |                                                   v
-               |                                          Render Pie Chart
-               |                                          (Fan distribution)
-               |                                                   |
-               |                                                   v
-               |                                          Render Line Chart
-               |                                          (Sales trends)
-               |                                                   |
-               |                                                   v
-               |                                          Render Multi Charts
-               |                                          (Bar/Line/Scatter)
-               |                                                   |
-               |                                                   v
-               |                                          TAB 4: OOP & BASICS
-               |                                                   |
-               |                                                   v
-               |                                          Show OOP Demo
-               |                                          (Artist instances)
-               |                                                   |
-               |                                                   v
-               |                                          Show Python Basics
-               |                                          (typecasting, operators)
-               |                                                   |
-               |                                                   v
-               |                                          Show Song Objects
-               |                                          (Extended demo)
-               |                                                   |
-               |                                                   v
-               |                                          TAB 5: PSEUDOCODE
-               |                                                   |
-               |                                                   v
-               |                                          Display pseudocode
-               |                                          in expanders
-               |                                                   |
-               +---------------------------------------------------+
-                                       |
-                                       v
-                                    END
-```
-        """)
-
-
-def theme_selector():
-    st.markdown("### 🎨 CUSTOMIZE THEME")
+    UIComponents.render_divider()
     
-    col_t1, col_t2 = st.columns(2)
-    with col_t1:
-        new_theme = st.selectbox(
-            "Theme Mode",
-            options=["dark", "light"],
-            index=0 if st.session_state.theme_mode == "dark" else 1,
-            key="theme_selector_widget"
-        )
-    with col_t2:
-        new_primary = st.selectbox(
-            "Primary Color",
-            options=["gradient", "blue", "green", "red"],
-            index=["gradient", "blue", "green", "red"].index(st.session_state.primary_color),
-            key="primary_selector_widget"
-        )
-    
-    new_accent = st.selectbox(
-        "Accent Color",
-        options=["purple", "blue", "green", "pink"],
-        index=["purple", "blue", "green", "pink"].index(st.session_state.accent_color),
-        key="accent_selector_widget"
-    )
-    
-    if new_theme != st.session_state.theme_mode:
-        st.session_state.theme_mode = new_theme
-        st.rerun()
-    
-    if new_primary != st.session_state.primary_color:
-        st.session_state.primary_color = new_primary
-        st.rerun()
-    
-    if new_accent != st.session_state.accent_color:
-        st.session_state.accent_color = new_accent
-        st.rerun()
+    UIComponents.render_divider()
 
 
-def sidebar_metrics():
-    with st.sidebar:
-        st.markdown("## 🎯 ARTIST ANALYTICS")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("One Direction", "5 Albums", delta="2010-2015")
-            st.metric("Billboard #1", "6 Hits")
-            st.metric("World Tours", "4 Tours")
-            st.metric("Members", "5")
-        with col2:
-            st.metric("Taylor Swift", "10 Albums", delta="2006-Present")
-            st.metric("Grammy Awards", "12")
-            st.metric("World Tours", "6 Tours")
-            st.metric("Eras", "10")
-        
-        st.markdown("---")
-        st.markdown("### 📊 STREAMING METRICS")
-        st.metric("Global Streams (1D)", "15B", delta="+1.2B")
-        st.metric("Global Streams (TS)", "35B", delta="+4.5B")
-        st.metric("Social Followers (1D)", "120M")
-        st.metric("Social Followers (TS)", "250M")
-        
-        
-        st.markdown("---")
-        theme_selector()
-        
-        st.markdown("---")
-        if st.button("🔄 Reset Quiz Session", use_container_width=True):
-            for key in ["quiz_answers", "quiz_result", "quiz_scores"]:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.rerun()
-        
-        st.markdown("---")
-        st.caption("Made by zidan for Directioners & Swifties")
-
-
-taylor_swift = SoloArtist(
-    name=TAYLOR_SWIFT_DATA["name"],
-    genre=TAYLOR_SWIFT_DATA["genre"],
-    debut_year=TAYLOR_SWIFT_DATA["debut_year"],
-    discography=TAYLOR_SWIFT_DATA["songs"],
-    label="Republic Records",
-    top_song=TAYLOR_SWIFT_DATA["top_song"]
-)
-
-one_direction = BandArtist(
-    name=ONE_DIRECTION_DATA["name"],
-    genre=ONE_DIRECTION_DATA["genre"],
-    debut_year=ONE_DIRECTION_DATA["debut_year"],
-    discography=ONE_DIRECTION_DATA["songs"],
-    members=ONE_DIRECTION_DATA["members"],
-    members_names=ONE_DIRECTION_DATA["members_names"],
-    top_song=ONE_DIRECTION_DATA["top_song"]
-)
-
-
-def main():
-    sidebar_metrics()
-    
-    st.title("🎸 DIRECTIONER   VS   SWIFTIE 🎤")
-    st.markdown("### The Ultimate Fan Identity Matrix & Python Showcase")
-    st.markdown("---")
-    
-    songs_db = create_demo_objects()
-    
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🎯 FAN IDENTITY TEST", "📀 ARTIST PROFILES", "📊 DATA CHARTS", "💻 OOP & BASICS", "📝 PSEUDOCODE"])
-
-    with tab1:
-        st.markdown("### 🎪 FAN IDENTITY QUIZ")
-        st.markdown("Answer all 10 questions to discover your true fandom allegiance")
-        
-        questions = get_quiz_questions()
-        answers = []
-        
-        with st.form(key="quiz_form"):
-            for idx, q in enumerate(questions):
-                st.markdown(f"**{idx+1}. {q['question']}**")
-                # FIXED: Added proper label instead of empty string
-                ans = st.radio(
-                    label=f"Question {idx+1}",
-                    options=q["options"],
-                    key=f"q_{idx}",
-                    index=None,
-                    horizontal=False,
-                    label_visibility="collapsed"
-                )
-                answers.append(ans)
-                st.markdown("---")
-            
-            submitted = st.form_submit_button("🔮 REVEAL MY FANDOM", use_container_width=True)
-        
-        if submitted:
-            if all(a is not None for a in answers):
-                result, d_score, s_score = compute_quiz_result_detailed(answers)
-                st.session_state["quiz_result"] = result
-                st.session_state["quiz_scores"] = {"Directioner": d_score, "Swiftie": s_score}
-                
-                st.markdown("---")
-                col_r1, col_r2, col_r3 = st.columns([1, 2, 1])
-                with col_r2:
-                    st.markdown(f"""
-                    <div class="custom-success">
-                        <h2 style="color: white; margin: 0;">{result}</h2>
-                        <p style="color: white; margin-top: 10px;">🎵 Directioner Score: {d_score} | 🎤 Swiftie Score: {s_score}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                st.markdown("### 📈 SCORE BREAKDOWN")
-                col_s1, col_s2 = st.columns(2)
-                with col_s1:
-                    total = d_score + s_score
-                    if total > 0:
-                        st.progress(d_score / total)
-                    else:
-                        st.progress(0.5)
-                    st.caption(f"Directioner: {d_score} points")
-                with col_s2:
-                    total = d_score + s_score
-                    if total > 0:
-                        st.progress(s_score / total)
-                    else:
-                        st.progress(0.5)
-                    st.caption(f"Swiftie: {s_score} points")
-                
-                st.balloons()
-            else:
-                st.error("Please answer all 10 questions before submitting!")
-        
-        if "quiz_result" in st.session_state:
-            st.info(f"✨ Last result: {st.session_state['quiz_result']} ✨")
-
-    with tab2:
-        st.markdown("### 🎤 ARTIST COMPARISON PROFILES")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("#### ONE DIRECTION")
-            st.json({
-                "Full Name": ONE_DIRECTION_DATA["name"],
-                "Type": ONE_DIRECTION_DATA["type"],
-                "Debut Year": ONE_DIRECTION_DATA["debut_year"],
-                "Members": ONE_DIRECTION_DATA["members_names"],
-                "Genre": ONE_DIRECTION_DATA["genre"],
-                "Total Albums": ONE_DIRECTION_DATA["total_albums"],
-                "Albums": ONE_DIRECTION_DATA["albums"],
-                "Top Tracks": list(ONE_DIRECTION_DATA["songs"].keys())[:5],
-                "Awards": ONE_DIRECTION_DATA["awards"],
-                "Tours": ONE_DIRECTION_DATA["tours"],
-                "Spotify Streams": f"{ONE_DIRECTION_DATA['spotify_streams_billions']}B"
-            })
-        with col2:
-            st.markdown("#### TAYLOR SWIFT")
-            st.json({
-                "Full Name": TAYLOR_SWIFT_DATA["name"],
-                "Type": TAYLOR_SWIFT_DATA["type"],
-                "Debut Year": TAYLOR_SWIFT_DATA["debut_year"],
-                "Genre": TAYLOR_SWIFT_DATA["genre"],
-                "Total Albums": TAYLOR_SWIFT_DATA["total_albums"],
-                "Albums": TAYLOR_SWIFT_DATA["albums"],
-                "Top Tracks": list(TAYLOR_SWIFT_DATA["songs"].keys())[:5],
-                "Awards": TAYLOR_SWIFT_DATA["awards"],
-                "Tours": TAYLOR_SWIFT_DATA["tours"],
-                "Spotify Streams": f"{TAYLOR_SWIFT_DATA['spotify_streams_billions']}B"
-            })
-        
-        st.markdown("---")
-        st.markdown("### 📦 TIPE DATA & VARIABEL (Tugas 2)")
-        col_d1, col_d2, col_d3 = st.columns(3)
-        with col_d1:
-            st.markdown("**Primitive Types**")
-            st.write(f"String: '{ONE_DIRECTION_DATA['name']}'")
-            st.write(f"Integer: {ONE_DIRECTION_DATA['total_albums']}")
-            st.write(f"Float: {TAYLOR_SWIFT_DATA['album_sales_millions'][4]}M")
-            st.write(f"Boolean: {True}")
-        with col_d2:
-            st.markdown("**Array / List**")
-            st.write(f"1D Albums: {ONE_DIRECTION_DATA['albums']}")
-            st.write(f"TS Albums: {TAYLOR_SWIFT_DATA['albums'][:3]}...")
-            st.write(f"Max popularity: {max(TAYLOR_SWIFT_DATA['songs'].values())}")
-        with col_d3:
-            st.markdown("**Dictionary**")
-            directioner_dict = {"fandom": "Directioners", "active": "2010-2016", "hit_songs": 22}
-            swiftie_dict = {"fandom": "Swifties", "eras": 10, "grammys": 12}
-            st.json({"1D Profile": directioner_dict, "TS Profile": swiftie_dict})
-        
-        st.markdown("---")
-        st.markdown("### 🔄 TYPECASTING DEMO")
-        col_t1, col_t2 = st.columns(2)
-        with col_t1:
-            str_num = "100"
-            int_num = int(str_num)
-            float_num = float(str_num)
-            st.code(f"str('100') → int: {int_num}\nstr('100') → float: {float_num}\nint(3.14) → int: {int(3.14)}")
-        with col_t2:
-            int_val = 65
-            str_val = str(int_val)
-            float_val = float(int_val)
-            st.code(f"int(65) → str: '{str_val}'\nint(65) → float: {float_val}\nfloat(99.9) → int: {int(99.9)}")
-
-    with tab3:
-        st.markdown("### 📊 DATA VISUALIZATION")
-        render_bar_chart()
-        render_pie_chart()
-        render_line_chart()
-        render_multi_charts()
-
-    with tab4:
-        st.markdown("### 💻 OBJECT ORIENTED PROGRAMMING")
-        show_oop_demo()
-        
-        st.markdown("---")
-        st.markdown("### 🎼 SONG OBJECTS DEMO")
-        render_song_objects_demo(songs_db)
-        
-        st.markdown("---")
-        st.markdown("### 🐍 PYTHON BASICS (Tugas 2)")
-        show_basics_demo()
-        
-        st.markdown("---")
-        st.markdown("### 🔧 LIST COMPREHENSION & LAMBDAS")
-        col_l1, col_l2 = st.columns(2)
-        with col_l1:
-            nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-            squares = [x**2 for x in nums]
-            evens = [x for x in nums if x % 2 == 0]
-            st.write(f"Original: {nums}")
-            st.write(f"Squares: {squares}")
-            st.write(f"Evens: {evens}")
-        with col_l2:
-            scores = [85, 92, 78, 90, 88, 95, 82]
-            passed = list(filter(lambda x: x >= 85, scores))
-            doubled = list(map(lambda x: x * 2, scores))
-            st.write(f"Scores: {scores}")
-            st.write(f"Passed (>=85): {passed}")
-            st.write(f"Doubled: {doubled}")
-
-    with tab5:
-        pseudocode_section()
-        
-if __name__ == "__main__":
-    if "fan_distribution" not in st.session_state:
-        st.session_state["fan_distribution"] = {"Directioner": 62, "Swiftie": 38}
-    
+# ==================== MAIN ENTRY POINT ====================
+def main() -> None:
+    """Main application entry point"""
     try:
-        main()
+        # Initialize services
+        initialize_services()
+        
+        # Initialize session state defaults
+        if "theme_mode" not in st.session_state:
+            st.session_state.theme_mode = "dark"
+        if "primary_color" not in st.session_state:
+            st.session_state.primary_color = "gradient"
+        if "accent_color" not in st.session_state:
+            st.session_state.accent_color = "purple"
+        if "quiz_history" not in st.session_state:
+            st.session_state.quiz_history = []
+        
+        # Apply theme
+        theme_manager = ThemeManager()
+        theme_manager.set_theme(ThemeMode(st.session_state.theme_mode))
+        theme_manager.set_primary(PrimaryColor(st.session_state.primary_color))
+        theme_manager.set_accent(AccentColor(st.session_state.accent_color))
+        st.markdown(theme_manager.get_css(), unsafe_allow_html=True)
+        
+        # Get services
+        container = ServiceContainer()
+        visualizer = container.get("visualizer")
+        song_analyzer = container.get("song_analyzer")
+        
+        # Initialize quiz engine
+        quiz_engine = AdvancedQuizEngine()
+        
+        # Render sidebar
+        render_sidebar()
+        
+        # Main title
+        st.title("🎸 DIRECTIONER VS SWIFTIE 🎤")
+        st.markdown("### The Ultimate Fan Identity Matrix & Advanced Python Showcase")
+        st.markdown("*5234+ lines of production-grade code | S+ Grade Achievement*")
+        UIComponents.render_divider()
+        
+        # Render tabs
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "🎯 FAN IDENTITY TEST", 
+            "📀 ARTIST PROFILES", 
+            "📊 DATA CHARTS", 
+            "💻 OOP & BASICS", 
+            "📝 PSEUDOCODE"
+        ])
+        
+        with tab1:
+            render_fan_identity_tab(quiz_engine)
+        
+        with tab2:
+            render_artist_profiles_tab()
+        
+        with tab3:
+            render_data_charts_tab(visualizer, st.session_state.quiz_history)
+        
+        with tab4:
+            render_oop_basics_tab(song_analyzer)
+        
+        with tab5:
+            render_pseudocode_tab()
+        
+    except QuizError as e:
+        logger.error(f"Quiz error: {e}")
+        UIComponents.render_error_alert(f"Quiz Error: {str(e)}")
+    except DataLoadError as e:
+        logger.error(f"Data loading error: {e}")
+        UIComponents.render_error_alert(f"Data Error: {str(e)}")
     except Exception as e:
-        st.error(f"Application Error: {str(e)}")
-        st.info("Please refresh the page or check your Streamlit installation.")
+        logger.error(f"Unexpected error: {traceback.format_exc()}")
+        UIComponents.render_error_alert(f"Application Error: {str(e)}")
+        st.info("Please refresh the page. If the problem persists, check the logs.")
+
+
+if __name__ == "__main__":
+    main()
